@@ -1,36 +1,20 @@
 (vl-load-com)
 
 ;; =============================================================================
-;; YYR_Brace - select a LINE, generate two parallel rectangles on layer 03Brace
+;; YYR_Brace - select one or more LINEs, generate two parallel rectangles on layer 03Brace
 ;;   Rect1 width = param * 5
 ;;   Rect2 width = (param - 10) * 5
 ;;   param must be > 10
 ;; =============================================================================
 
-(defun YYR_Brace (param / line_ent line_data start_pt end_pt line_len line_angle perp_angle width1 width2 offset1 offset2 rect1_pt1 rect1_pt2 rect1_pt3 rect1_pt4 rect2_pt1 rect2_pt2 rect2_pt3 rect2_pt4)
+(defun YYR_Brace (param / ss ss_len i count line_ent line_data start_pt end_pt line_len line_angle perp_angle width1 width2 offset1 offset2 rect1_pt1 rect1_pt2 rect1_pt3 rect1_pt4 rect2_pt1 rect2_pt2 rect2_pt3 rect2_pt4)
 
   (setq width1 (* param 5.0))
   (setq width2 (* (- param 10) 5.0))
 
-  (setq line_ent (car (entsel "\nSelect a LINE: ")))
-  (if (not line_ent)
-    (progn (prompt "\nNo object selected.") (exit))
-  )
-
-  (setq line_data (entget line_ent))
-  (if (/= (cdr (assoc 0 line_data)) "LINE")
-    (progn (alert "Selected object is not a LINE!") (exit))
-  )
-
-  (setq start_pt (cdr (assoc 10 line_data)))
-  (setq end_pt   (cdr (assoc 11 line_data)))
-
-  (setq line_len   (distance start_pt end_pt))
-  (setq line_angle (angle start_pt end_pt))
-  (setq perp_angle (+ line_angle (/ pi 2.0)))
-
-  (if (< (sin perp_angle) 0)
-    (setq perp_angle (+ perp_angle pi))
+  (setq ss (ssget '((0 . "LINE"))))
+  (if (not ss)
+    (progn (prompt "\nNo LINE selected.") (exit))
   )
 
   (if (not (tblsearch "LAYER" "03Brace"))
@@ -44,83 +28,87 @@
     ))
   )
 
-  ;; Rectangle 1
-  (setq offset1   (/ width1 2.0))
-  (setq rect1_pt1 (polar start_pt perp_angle (- offset1)))
-  (setq rect1_pt2 (polar end_pt   perp_angle (- offset1)))
-  (setq rect1_pt3 (polar end_pt   perp_angle offset1))
-  (setq rect1_pt4 (polar start_pt perp_angle offset1))
+  (setq ss_len (sslength ss)
+        i      0
+        count  0)
 
-  (entmake (list
-    '(0 . "LWPOLYLINE")
-    '(100 . "AcDbEntity")
-    '(8 . "03Brace")
-    '(100 . "AcDbPolyline")
-    '(90 . 4)
-    '(70 . 1)
-    (cons 10 (list (car rect1_pt1) (cadr rect1_pt1)))
-    (cons 10 (list (car rect1_pt2) (cadr rect1_pt2)))
-    (cons 10 (list (car rect1_pt3) (cadr rect1_pt3)))
-    (cons 10 (list (car rect1_pt4) (cadr rect1_pt4)))
-  ))
+  (while (< i ss_len)
+    (setq line_ent  (ssname ss i)
+          line_data (entget line_ent)
+          start_pt  (cdr (assoc 10 line_data))
+          end_pt    (cdr (assoc 11 line_data))
+          line_len  (distance start_pt end_pt)
+          line_angle (angle start_pt end_pt)
+          perp_angle (+ line_angle (/ pi 2.0)))
 
-  ;; Rectangle 2 (centered on the line, narrower)
-  (setq offset2   (/ width2 2.0))
-  (setq rect2_pt1 (polar start_pt perp_angle (- offset2)))
-  (setq rect2_pt2 (polar end_pt   perp_angle (- offset2)))
-  (setq rect2_pt3 (polar end_pt   perp_angle offset2))
-  (setq rect2_pt4 (polar start_pt perp_angle offset2))
+    (if (< (sin perp_angle) 0)
+      (setq perp_angle (+ perp_angle pi))
+    )
 
-  (entmake (list
-    '(0 . "LWPOLYLINE")
-    '(100 . "AcDbEntity")
-    '(8 . "03Brace")
-    '(100 . "AcDbPolyline")
-    '(90 . 4)
-    '(70 . 1)
-    (cons 10 (list (car rect2_pt1) (cadr rect2_pt1)))
-    (cons 10 (list (car rect2_pt2) (cadr rect2_pt2)))
-    (cons 10 (list (car rect2_pt3) (cadr rect2_pt3)))
-    (cons 10 (list (car rect2_pt4) (cadr rect2_pt4)))
-  ))
+    ;; Rectangle 1
+    (setq offset1   (/ width1 2.0)
+          rect1_pt1 (polar start_pt perp_angle (- offset1))
+          rect1_pt2 (polar end_pt   perp_angle (- offset1))
+          rect1_pt3 (polar end_pt   perp_angle offset1)
+          rect1_pt4 (polar start_pt perp_angle offset1))
 
-  (prompt (strcat "\nCreated 2 rectangles on layer 03Brace"))
-  (prompt (strcat "\n  Rect1: " (rtos width1 2 0) " x " (rtos line_len 2 0)))
-  (prompt (strcat "\n  Rect2: " (rtos width2 2 0) " x " (rtos line_len 2 0)))
+    (entmake (list
+      '(0 . "LWPOLYLINE")
+      '(100 . "AcDbEntity")
+      '(8 . "03Brace")
+      '(100 . "AcDbPolyline")
+      '(90 . 4)
+      '(70 . 1)
+      (cons 10 (list (car rect1_pt1) (cadr rect1_pt1)))
+      (cons 10 (list (car rect1_pt2) (cadr rect1_pt2)))
+      (cons 10 (list (car rect1_pt3) (cadr rect1_pt3)))
+      (cons 10 (list (car rect1_pt4) (cadr rect1_pt4)))
+    ))
+
+    ;; Rectangle 2 (centered on the line, narrower)
+    (setq offset2   (/ width2 2.0)
+          rect2_pt1 (polar start_pt perp_angle (- offset2))
+          rect2_pt2 (polar end_pt   perp_angle (- offset2))
+          rect2_pt3 (polar end_pt   perp_angle offset2)
+          rect2_pt4 (polar start_pt perp_angle offset2))
+
+    (entmake (list
+      '(0 . "LWPOLYLINE")
+      '(100 . "AcDbEntity")
+      '(8 . "03Brace")
+      '(100 . "AcDbPolyline")
+      '(90 . 4)
+      '(70 . 1)
+      (cons 10 (list (car rect2_pt1) (cadr rect2_pt1)))
+      (cons 10 (list (car rect2_pt2) (cadr rect2_pt2)))
+      (cons 10 (list (car rect2_pt3) (cadr rect2_pt3)))
+      (cons 10 (list (car rect2_pt4) (cadr rect2_pt4)))
+    ))
+
+    (setq count (1+ count)
+          i     (1+ i))
+  )
+
+  (prompt (strcat "\nCreated 2 rectangles x " (itoa count) " line(s) on layer 03Brace"
+                  "  [Rect1 width=" (rtos width1 2 0) "  Rect2 width=" (rtos width2 2 0) "]"))
   (princ)
 )
 
 ;; =============================================================================
-;; YYR_CPost - select a LINE, generate two centered rectangles on layer 03CPost
+;; YYR_CPost - select one or more LINEs, generate two centered rectangles on layer 03CPost
 ;;   Rect1 width = param * 5
 ;;   Rect2 width = (param - 20) * 5
 ;;   param must be > 20
 ;; =============================================================================
 
-(defun YYR_CPost (param / line_ent line_data start_pt end_pt line_len line_angle perp_angle width1 width2 offset1 offset2 rect1_pt1 rect1_pt2 rect1_pt3 rect1_pt4 rect2_pt1 rect2_pt2 rect2_pt3 rect2_pt4)
+(defun YYR_CPost (param / ss ss_len i count line_ent line_data start_pt end_pt line_len line_angle perp_angle width1 width2 offset1 offset2 rect1_pt1 rect1_pt2 rect1_pt3 rect1_pt4 rect2_pt1 rect2_pt2 rect2_pt3 rect2_pt4)
 
   (setq width1 (* param 5.0))
   (setq width2 (* (- param 20) 5.0))
 
-  (setq line_ent (car (entsel "\nSelect a LINE: ")))
-  (if (not line_ent)
-    (progn (prompt "\nNo object selected.") (exit))
-  )
-
-  (setq line_data (entget line_ent))
-  (if (/= (cdr (assoc 0 line_data)) "LINE")
-    (progn (alert "Selected object is not a LINE!") (exit))
-  )
-
-  (setq start_pt (cdr (assoc 10 line_data)))
-  (setq end_pt   (cdr (assoc 11 line_data)))
-
-  (setq line_len   (distance start_pt end_pt))
-  (setq line_angle (angle start_pt end_pt))
-  (setq perp_angle (+ line_angle (/ pi 2.0)))
-
-  (if (< (sin perp_angle) 0)
-    (setq perp_angle (+ perp_angle pi))
+  (setq ss (ssget '((0 . "LINE"))))
+  (if (not ss)
+    (progn (prompt "\nNo LINE selected.") (exit))
   )
 
   (if (not (tblsearch "LAYER" "03CPost"))
@@ -134,62 +122,82 @@
     ))
   )
 
-  ;; Rectangle 1
-  (setq offset1   (/ width1 2.0))
-  (setq rect1_pt1 (polar start_pt perp_angle (- offset1)))
-  (setq rect1_pt2 (polar end_pt   perp_angle (- offset1)))
-  (setq rect1_pt3 (polar end_pt   perp_angle offset1))
-  (setq rect1_pt4 (polar start_pt perp_angle offset1))
+  (setq ss_len (sslength ss)
+        i      0
+        count  0)
 
-  (entmake (list
-    '(0 . "LWPOLYLINE")
-    '(100 . "AcDbEntity")
-    '(8 . "03CPost")
-    '(62 . 4)
-    '(100 . "AcDbPolyline")
-    '(90 . 4)
-    '(70 . 1)
-    (cons 10 (list (car rect1_pt1) (cadr rect1_pt1)))
-    (cons 10 (list (car rect1_pt2) (cadr rect1_pt2)))
-    (cons 10 (list (car rect1_pt3) (cadr rect1_pt3)))
-    (cons 10 (list (car rect1_pt4) (cadr rect1_pt4)))
-  ))
+  (while (< i ss_len)
+    (setq line_ent  (ssname ss i)
+          line_data (entget line_ent)
+          start_pt  (cdr (assoc 10 line_data))
+          end_pt    (cdr (assoc 11 line_data))
+          line_len  (distance start_pt end_pt)
+          line_angle (angle start_pt end_pt)
+          perp_angle (+ line_angle (/ pi 2.0)))
 
-  ;; Rectangle 2 (centered on the line, narrower)
-  (setq offset2   (/ width2 2.0))
-  (setq rect2_pt1 (polar start_pt perp_angle (- offset2)))
-  (setq rect2_pt2 (polar end_pt   perp_angle (- offset2)))
-  (setq rect2_pt3 (polar end_pt   perp_angle offset2))
-  (setq rect2_pt4 (polar start_pt perp_angle offset2))
+    (if (< (sin perp_angle) 0)
+      (setq perp_angle (+ perp_angle pi))
+    )
 
-  (entmake (list
-    '(0 . "LWPOLYLINE")
-    '(100 . "AcDbEntity")
-    '(8 . "03CPost")
-    '(62 . 4)
-    '(100 . "AcDbPolyline")
-    '(90 . 4)
-    '(70 . 1)
-    (cons 10 (list (car rect2_pt1) (cadr rect2_pt1)))
-    (cons 10 (list (car rect2_pt2) (cadr rect2_pt2)))
-    (cons 10 (list (car rect2_pt3) (cadr rect2_pt3)))
-    (cons 10 (list (car rect2_pt4) (cadr rect2_pt4)))
-  ))
+    ;; Rectangle 1
+    (setq offset1   (/ width1 2.0)
+          rect1_pt1 (polar start_pt perp_angle (- offset1))
+          rect1_pt2 (polar end_pt   perp_angle (- offset1))
+          rect1_pt3 (polar end_pt   perp_angle offset1)
+          rect1_pt4 (polar start_pt perp_angle offset1))
 
-  (prompt (strcat "\nCreated 2 rectangles on layer 03CPost"))
-  (prompt (strcat "\n  Rect1: " (rtos width1 2 0) " x " (rtos line_len 2 0)))
-  (prompt (strcat "\n  Rect2: " (rtos width2 2 0) " x " (rtos line_len 2 0)))
+    (entmake (list
+      '(0 . "LWPOLYLINE")
+      '(100 . "AcDbEntity")
+      '(8 . "03CPost")
+      '(62 . 4)
+      '(100 . "AcDbPolyline")
+      '(90 . 4)
+      '(70 . 1)
+      (cons 10 (list (car rect1_pt1) (cadr rect1_pt1)))
+      (cons 10 (list (car rect1_pt2) (cadr rect1_pt2)))
+      (cons 10 (list (car rect1_pt3) (cadr rect1_pt3)))
+      (cons 10 (list (car rect1_pt4) (cadr rect1_pt4)))
+    ))
+
+    ;; Rectangle 2 (centered on the line, narrower)
+    (setq offset2   (/ width2 2.0)
+          rect2_pt1 (polar start_pt perp_angle (- offset2))
+          rect2_pt2 (polar end_pt   perp_angle (- offset2))
+          rect2_pt3 (polar end_pt   perp_angle offset2)
+          rect2_pt4 (polar start_pt perp_angle offset2))
+
+    (entmake (list
+      '(0 . "LWPOLYLINE")
+      '(100 . "AcDbEntity")
+      '(8 . "03CPost")
+      '(62 . 4)
+      '(100 . "AcDbPolyline")
+      '(90 . 4)
+      '(70 . 1)
+      (cons 10 (list (car rect2_pt1) (cadr rect2_pt1)))
+      (cons 10 (list (car rect2_pt2) (cadr rect2_pt2)))
+      (cons 10 (list (car rect2_pt3) (cadr rect2_pt3)))
+      (cons 10 (list (car rect2_pt4) (cadr rect2_pt4)))
+    ))
+
+    (setq count (1+ count)
+          i     (1+ i))
+  )
+
+  (prompt (strcat "\nCreated 2 rectangles x " (itoa count) " line(s) on layer 03CPost"
+                  "  [Rect1 width=" (rtos width1 2 0) "  Rect2 width=" (rtos width2 2 0) "]"))
   (princ)
 )
 
 ;; =============================================================================
-;; YYR_Label - select a LINE, create an aligned dimension below it
+;; YYR_Label - select one or more LINEs, create an aligned dimension below each
 ;;   param 100 -> style TSSD_100_100, offset 150*1 = 150
 ;;   param  50 -> style TSSD_50_100,  offset 150*2 = 300
 ;;   param  20 -> style TSSD_20_100,  offset 150*5 = 750
 ;; =============================================================================
 
-(defun YYR_Label (param / line_ent line_data start_pt end_pt line_angle perp_angle below_angle offset_dist mid_pt dim_loc style_name n old_dimstyle old_layer doc)
+(defun YYR_Label (param / ss ss_len i count line_ent line_data start_pt end_pt line_angle perp_angle below_angle offset_dist mid_pt dim_loc style_name n old_dimstyle old_layer doc)
 
   (cond
     ((= param 100) (setq n 1 style_name "TSSD_100_100"))
@@ -198,35 +206,12 @@
   )
   (setq offset_dist (* 150.0 n))
 
-  (setq line_ent (car (entsel "\nSelect a LINE to label: ")))
-  (if (not line_ent)
-    (progn (prompt "\nNo object selected.") (exit))
+  (setq ss (ssget '((0 . "LINE"))))
+  (if (not ss)
+    (progn (prompt "\nNo LINE selected.") (exit))
   )
 
-  (setq line_data (entget line_ent))
-  (if (/= (cdr (assoc 0 line_data)) "LINE")
-    (progn (alert "Selected object is not a LINE!") (exit))
-  )
-
-  (setq start_pt (cdr (assoc 10 line_data)))
-  (setq end_pt   (cdr (assoc 11 line_data)))
-
-  ;; Perpendicular direction pointing "below" (negative Y component)
-  (setq line_angle (angle start_pt end_pt))
-  (setq perp_angle (+ line_angle (/ pi 2.0)))
-  (if (> (sin perp_angle) 0)
-    (setq below_angle (+ perp_angle pi))
-    (setq below_angle perp_angle)
-  )
-
-  ;; Dimension line location: midpoint offset below by 150*n
-  (setq mid_pt (list
-    (/ (+ (car start_pt) (car end_pt)) 2.0)
-    (/ (+ (cadr start_pt) (cadr end_pt)) 2.0)
-    0.0))
-  (setq dim_loc (polar mid_pt below_angle offset_dist))
-
-  ;; Ensure DIM layer exists, then switch to it
+  ;; Ensure DIM layer exists
   (if (not (tblsearch "LAYER" "DIM"))
     (entmake (list
       '(0 . "LAYER")
@@ -237,12 +222,12 @@
       '(62 . 7)
     ))
   )
-  (setq old_layer (getvar "CLAYER"))
-  (setvar "CLAYER" "DIM")
 
-  ;; Set dimension style via VLA (avoids polluting the command queue)
-  (setq old_dimstyle (getvar "DIMSTYLE"))
-  (setq doc (vla-get-ActiveDocument (vlax-get-acad-object)))
+  (setq old_layer   (getvar "CLAYER")
+        old_dimstyle (getvar "DIMSTYLE")
+        doc          (vla-get-ActiveDocument (vlax-get-acad-object)))
+
+  (setvar "CLAYER" "DIM")
   (if (tblsearch "DIMSTYLE" style_name)
     (vl-catch-all-apply
       '(lambda ()
@@ -251,11 +236,36 @@
     )
   )
 
-  ;; Create aligned dimension (2D points — DIMALIGNED ignores Z)
-  (command "_.DIMALIGNED"
-    (list (car start_pt) (cadr start_pt))
-    (list (car end_pt)   (cadr end_pt))
-    (list (car dim_loc)  (cadr dim_loc))
+  (setq ss_len (sslength ss)
+        i      0
+        count  0)
+
+  (while (< i ss_len)
+    (setq line_ent  (ssname ss i)
+          line_data (entget line_ent)
+          start_pt  (cdr (assoc 10 line_data))
+          end_pt    (cdr (assoc 11 line_data))
+          line_angle (angle start_pt end_pt)
+          perp_angle (+ line_angle (/ pi 2.0)))
+
+    (if (> (sin perp_angle) 0)
+      (setq below_angle (+ perp_angle pi))
+      (setq below_angle perp_angle)
+    )
+
+    (setq mid_pt  (list (/ (+ (car start_pt) (car end_pt)) 2.0)
+                        (/ (+ (cadr start_pt) (cadr end_pt)) 2.0)
+                        0.0)
+          dim_loc (polar mid_pt below_angle offset_dist))
+
+    (command "_.DIMALIGNED"
+      (list (car start_pt) (cadr start_pt))
+      (list (car end_pt)   (cadr end_pt))
+      (list (car dim_loc)  (cadr dim_loc))
+    )
+
+    (setq count (1+ count)
+          i     (1+ i))
   )
 
   ;; Restore previous dimension style and layer
@@ -268,7 +278,42 @@
   )
   (setvar "CLAYER" old_layer)
 
-  (prompt (strcat "\nLabeled with " style_name " at offset " (rtos offset_dist 2 0)))
+  (prompt (strcat "\nLabeled " (itoa count) " line(s) with " style_name
+                  " at offset " (rtos offset_dist 2 0)))
+  (princ)
+)
+
+;; =============================================================================
+;; YYR_Shorten - click near one end of a LINE; that end retracts by param along the line
+;;   Loop until Enter is pressed so multiple ends can be shortened in one invocation.
+;; =============================================================================
+
+(defun YYR_Shorten (param / pr line_ent pick_pt line_data start_pt end_pt new_pt count)
+  (setq count 0)
+  (while (setq pr (entsel "\nClick near the end to shorten (Enter to finish): "))
+    (setq line_ent  (car pr)
+          pick_pt   (cadr pr)
+          line_data (entget line_ent))
+    (if (/= (cdr (assoc 0 line_data)) "LINE")
+      (prompt "\nNot a LINE — skipped.")
+      (progn
+        (setq start_pt (cdr (assoc 10 line_data))
+              end_pt   (cdr (assoc 11 line_data)))
+        (if (<= (distance pick_pt start_pt) (distance pick_pt end_pt))
+          ;; clicked nearer the start — retract start toward end
+          (setq new_pt    (polar start_pt (angle start_pt end_pt) param)
+                line_data (subst (cons 10 new_pt) (assoc 10 line_data) line_data))
+          ;; clicked nearer the end — retract end toward start
+          (setq new_pt    (polar end_pt (angle end_pt start_pt) param)
+                line_data (subst (cons 11 new_pt) (assoc 11 line_data) line_data))
+        )
+        (entmod line_data)
+        (entupd line_ent)
+        (setq count (1+ count))
+      )
+    )
+  )
+  (prompt (strcat "\nShortened " (itoa count) " line end(s) by " (rtos param 2 0)))
   (princ)
 )
 
@@ -276,11 +321,12 @@
 ;; Main command - DCL dialog
 ;; =============================================================================
 
-(defun c:YYR ( / dcl_file f dcl_id res brace_param_str cpost_param_str label_param_str)
+(defun c:YYR ( / dcl_file f dcl_id res brace_param_str cpost_param_str label_param_str shorten_param_str)
 
-  (setq brace_param_str "50")
-  (setq cpost_param_str "80")
-  (setq label_param_str "2") ; index 2 = param 20 (default)
+  (setq brace_param_str   "50")
+  (setq cpost_param_str   "80")
+  (setq label_param_str   "2") ; index 2 = param 20 (default)
+  (setq shorten_param_str "150")
 
   (setq dcl_file (vl-filename-mktemp "yyr.dcl"))
   (setq f (open dcl_file "w"))
@@ -295,7 +341,7 @@
   (write-line "      : edit_box { key = \"brace_param\"; edit_width = 10; }" f)
   (write-line "      : button { label = \"Run\"; key = \"btn_brace\"; width = 10; fixed_width = true; }" f)
   (write-line "    }" f)
-  (write-line "    : text { value = \"Select a line to generate 2 rectangles (param > 10)\"; }" f)
+  (write-line "    : text { value = \"Select lines to generate 2 rectangles (param > 10)\"; }" f)
   (write-line "    : text { value = \"Rect1 width = param x 5,  Rect2 width = (param-10) x 5\"; }" f)
   (write-line "  }" f)
 
@@ -307,7 +353,7 @@
   (write-line "      : edit_box { key = \"cpost_param\"; edit_width = 10; }" f)
   (write-line "      : button { label = \"Run\"; key = \"btn_cpost\"; width = 10; fixed_width = true; }" f)
   (write-line "    }" f)
-  (write-line "    : text { value = \"Select a line to generate 2 rectangles (param > 20)\"; }" f)
+  (write-line "    : text { value = \"Select lines to generate 2 rectangles (param > 20)\"; }" f)
   (write-line "    : text { value = \"Rect1 width = param x 5,  Rect2 width = (param-20) x 5\"; }" f)
   (write-line "  }" f)
 
@@ -325,6 +371,17 @@
   (write-line "  }" f)
 
   (write-line "  : spacer { height = 1; }" f)
+
+  (write-line "  : boxed_column { label = \"Shorten - Retract One End of a Line\";" f)
+  (write-line "    : row {" f)
+  (write-line "      : text { label = \"Length:\"; width = 10; fixed_width = true; }" f)
+  (write-line "      : edit_box { key = \"shorten_param\"; edit_width = 10; }" f)
+  (write-line "      : button { label = \"Run\"; key = \"btn_shorten\"; width = 10; fixed_width = true; }" f)
+  (write-line "    }" f)
+  (write-line "    : text { value = \"Click near the end to retract; Enter to finish.\"; }" f)
+  (write-line "  }" f)
+
+  (write-line "  : spacer { height = 1; }" f)
   (write-line "  ok_cancel;" f)
   (write-line "}" f)
 
@@ -335,8 +392,9 @@
     (progn (princ "\nError loading DCL.") (exit))
   )
 
-  (set_tile "brace_param"  brace_param_str)
-  (set_tile "cpost_param"  cpost_param_str)
+  (set_tile "brace_param"   brace_param_str)
+  (set_tile "cpost_param"   cpost_param_str)
+  (set_tile "shorten_param" shorten_param_str)
 
   (start_list "label_param")
   (add_list "100")
@@ -351,6 +409,8 @@
     "(setq cpost_param_str (get_tile \"cpost_param\")) (done_dialog 3)")
   (action_tile "btn_label"
     "(setq label_param_str (get_tile \"label_param\")) (done_dialog 2)")
+  (action_tile "btn_shorten"
+    "(setq shorten_param_str (get_tile \"shorten_param\")) (done_dialog 4)")
   (action_tile "accept"  "(done_dialog 0)")
   (action_tile "cancel"  "(done_dialog -1)")
 
@@ -382,6 +442,13 @@
         )
       )
       (YYR_Label label_param)
+    )
+    ((= res 4)
+      (setq shorten_param (atof shorten_param_str))
+      (if (<= shorten_param 0)
+        (alert "Length must be > 0")
+        (YYR_Shorten shorten_param)
+      )
     )
   )
 

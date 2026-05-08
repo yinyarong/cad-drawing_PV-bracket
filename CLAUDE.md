@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-本项目包含两个 AutoCAD AutoLISP 脚本，均直接在 AutoCAD 中解释执行，无需编译：
+本项目包含三个 AutoCAD AutoLISP 脚本，均直接在 AutoCAD 中解释执行，无需编译：
 
 | 脚本 | 命令 | 功能 |
 |------|------|------|
 | `PVRect.lsp` | `PVRect` | 光伏支架阵列布局自动生成（完整工程图纸） |
-| `YYR.lsp` | `YYR` | 轻量绘图工具：Brace 支撑架、按坐标画线/圆 |
+| `YYR.lsp` | `YYR` | 轻量绘图工具：Brace 支撑架、C-Post 柱截面、Label 标注 |
+| `Mymodel.lsp` | `MyModel` | 3D 旋转 + Excel 读取 + 行复制 + 导出 DXF 的自动建模脚本 |
 
 ## 运行方式
 
@@ -17,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 APPLOAD → 选择文件 → 加载
-(load "PVRect.lsp")   ; 或 YYR.lsp
+(load "PVRect.lsp")   ; 或 YYR.lsp / Mymodel.lsp
 ```
 
 ---
@@ -68,24 +69,53 @@ APPLOAD → 选择文件 → 加载
 ## YYR.lsp — 轻量绘图工具集
 
 ### 主命令
-- `YYR` — 启动 DCL 对话框，选择子功能
+- `YYR` — 启动 DCL 对话框，选择子功能（Brace / C-Post / Label）
 
-### 代码架构（363 行）
+### 子功能
 
-| 函数 | 功能 |
-|------|------|
-| `YYR_Brace(param)` | 选一条 LINE，沿其生成两个并排矩形（Brace 支撑架截面） |
-| `YYR_DrawLine(...)` | 按起止坐标画线，支持 7 种颜色 |
-| `YYR_DrawCircle(...)` | 按圆心+半径画圆，支持 7 种颜色 |
-| `c:YYR()` | 动态生成 DCL 文件并加载，退出后自动删除 |
+| 功能 | 图层 | 说明 |
+|------|------|------|
+| **Brace** | `03Brace`（白） | 选一条 LINE，生成两个并排 LWPOLYLINE（Brace 支撑架截面）；`param > 10`，Rect1宽 = param×5，Rect2宽 = (param-10)×5 |
+| **C-Post** | `03CPost`（青） | 与 Brace 相同工作流，用于柱截面；`param > 20`，Rect1宽 = param×5，Rect2宽 = (param-20)×5 |
+| **Label** | `DIM`（白） | 选一条 LINE，在其下方放置 `DIMALIGNED` 标注；比例 20/50/100 对应不同偏移和标注样式 |
 
-**Brace 参数约束**：`param > 10`（矩形1宽 = param×5，矩形2宽 = (param-10)×5）
+### Label 标注样式
+
+| 比例 | 标注样式 | 垂直偏移 |
+|------|---------|---------|
+| 100 | `TSSD_100_100` | 150 |
+| 50 | `TSSD_50_100` | 300 |
+| 20（默认） | `TSSD_20_100` | 750 |
+
+TSSD 标注样式需 TSSD 结构 CAD 插件；否则回退到当前样式。操作完成后自动恢复原有标注样式和图层。
 
 ### 关键实现细节
 
-- **动态 DCL**：DCL 内容用 `write-line` 写入临时文件，`load_dialog` 加载，无需静态 .dcl 文件
-- **图层创建**：`entmake` 创建 `03Brace` 图层，不依赖 `_.-LAYER` 命令
-- **Brace 几何**：`polar` + `angle` 计算垂直偏移，基于线段方向角旋转
+- **动态 DCL**：DCL 内容用 `write-line` 写入临时文件，`load_dialog` 加载，退出后自动删除，无需静态 .dcl 文件
+- **图层创建**：`entmake` 创建图层（`03Brace`、`03CPost`、`DIM`），不依赖 `_.-LAYER` 命令
+- **Brace/C-Post 几何**：`polar` + `angle` 计算垂直偏移，基于线段方向角旋转
+
+---
+
+## Mymodel.lsp — 自动建模脚本
+
+### 主命令
+- `MyModel` — 一键执行：3D旋转 → Excel读取 → 檩条调整 → 行复制 → 清理图层 → 导出DXF
+
+### 执行流程（顺序）
+
+1. **3D 旋转**：全选所有实体，绕 X 轴旋转 90°（`vla-Rotate3D`）
+2. **Excel 读取**：从图纸目录第一个 `.xls*` 文件的 **"排列计算"** 工作表读取参数
+   - `C13` = 总距离 `dist_total`，`C14` = 间距 `spacing`，`C15` = 行数 `rowCount`，`C16` = `dist1`（`dist2 = dist_total - dist1`）
+3. **檩条调整**：对图层 `01Purlin-01` / `01Purlin-02` 上的线段，以 Z 最小端点为基点，按 `dist1`/`dist2` 重绘
+4. **行复制**：将图层 `02Beam`、`03Brace`、`04Column` 上的实体复制 `rowCount` 次，每次沿 Y 轴偏移 `-spacing × i`
+5. **清理图层**：保留有曲线实体的图层和图层 `0`，删除其余图层及其实体，运行 `PURGE`
+6. **导出 DXF**：保存为同名 `.dxf`（R2010 格式，`SAVEAS DXF 16`），覆盖已有文件
+
+### 关键实现细节
+- 用 Late Binding 连接 Excel/WPS COM，优先复用已开启的工作簿；`isOpenedByMe` 标记控制是否退出 Excel
+- `*error*` 处理函数负责恢复 `OSMODE`、`cmdecho` 及关闭 Excel
+- `_delete-extra-layers` 需要两轮删除（图层间依赖），每轮后调用 `PURGE`
 
 ---
 
