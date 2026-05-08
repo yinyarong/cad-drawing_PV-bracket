@@ -186,26 +186,47 @@
   (PVRect_UniqueSorted candidates)
 )
 
-(defun PVRect_FindBreakPath (current_x end_x candidates max_len / rev_candidates candidate sub result)
-  (if (<= (- end_x current_x) max_len)
+(defun PVRect_FindBreakPath (start_x end_x candidates max_len / total n_segs ideal_len breaks i ideal_x best_c best_dist prev_x c d valid)
+  (if (<= (- end_x start_x) max_len)
     nil
     (progn
-      (setq rev_candidates (reverse candidates)
-            result 'pvrect_fail)
-      (while (and rev_candidates (= result 'pvrect_fail))
-        (setq candidate (car rev_candidates)
-              rev_candidates (cdr rev_candidates))
-        (if (and (> candidate current_x)
-                 (<= (- candidate current_x) max_len))
-          (progn
-            (setq sub (PVRect_FindBreakPath candidate end_x candidates max_len))
-            (if (not (= sub 'pvrect_fail))
-              (setq result (cons candidate sub))
+      ;; Minimum segments needed and ideal equal length per segment
+      (setq total     (- end_x start_x)
+            n_segs    (1+ (fix (/ (- total 1e-9) max_len)))
+            ideal_len (/ total (float n_segs))
+            breaks    nil
+            prev_x    start_x
+            valid     T
+            i         1)
+      ;; Place n_segs-1 break points, each as close to its ideal position as possible
+      (while (and valid (< i n_segs))
+        (setq ideal_x   (+ start_x (* ideal_len i))
+              best_c    nil
+              best_dist 1e99)
+        (foreach c candidates
+          (if (and (> c prev_x)
+                   (<= (- c prev_x) max_len))
+            (progn
+              (setq d (abs (- c ideal_x)))
+              (if (< d best_dist)
+                (setq best_c    c
+                      best_dist d)
+              )
             )
           )
         )
+        (if best_c
+          (setq breaks (append breaks (list best_c))
+                prev_x best_c)
+          (setq valid nil)
+        )
+        (setq i (1+ i))
       )
-      result
+      ;; Final segment must also fit within max_len
+      (if (and valid (> (- end_x prev_x) max_len))
+        (setq valid nil)
+      )
+      (if valid breaks 'pvrect_fail)
     )
   )
 )
@@ -1028,6 +1049,36 @@
                    (setvar "CLAYER" "DIM")
                    (command "_.DIMLINEAR" "_NON" (list new_line_x1 lower_top_axis_y 0.0) "_NON" (list pv_start_x pv_start_y 0.0) "_NON" (list (- new_line_x1 500.0) (/ (+ lower_top_axis_y pv_start_y) 2.0) 0.0))
                    
+                   ;; 为右侧立面图添加标题、双下划线和比例 1:20
+                   (setq elev_center_x   (/ (+ new_line_x1 new_line_x2) 2.0)
+                         elev_title_y    (- lower_top_axis_y 3000.0)
+                         elev_t1_str     "PV Mount Structure Elevation layout")
+                   (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES")
+                                  (cons 10 (list elev_center_x elev_title_y 0))
+                                  (cons 40 550.0) (cons 1 elev_t1_str) '(72 . 1)
+                                  (cons 11 (list elev_center_x elev_title_y 0))))
+                   (setq e_elev         (entlast)
+                         tb_elev        (textbox (entget e_elev))
+                         elev_t1_width  (- (caadr tb_elev) (caar tb_elev))
+                         elev_t1_minX   (- elev_center_x (/ elev_t1_width 2.0))
+                         elev_t1_maxX   (+ elev_center_x (/ elev_t1_width 2.0))
+                         elev_line_x1   (- elev_t1_minX 300.0)
+                         elev_line_x2   (+ elev_t1_maxX 300.0)
+                         elev_line_top_y (- elev_title_y 250.0)
+                         elev_line_bot_y (- elev_line_top_y 150.0))
+                   (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                  '(8 . "NUM") '(90 . 2) (cons 43 50.0)
+                                  (list 10 elev_line_x1 elev_line_top_y)
+                                  (list 10 elev_line_x2 elev_line_top_y)))
+                   (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                  '(8 . "NUM") '(90 . 2) '(43 . 0.0)
+                                  (list 10 elev_line_x1 elev_line_bot_y)
+                                  (list 10 elev_line_x2 elev_line_bot_y)))
+                   (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES")
+                                  (cons 10 (list (+ elev_line_x2 400.0) elev_title_y 0))
+                                  (cons 40 400.0) (cons 1 "1:20") '(72 . 0)
+                                  (cons 11 (list (+ elev_line_x2 400.0) elev_title_y 0))))
+
                    (if (tblsearch "DIMSTYLE" "TSSD_50_100") (command "-DIMSTYLE" "_R" "TSSD_50_100")) ;; 恢复 TSSD_50_100
                    (setvar "CLAYER" "DIM") ;; 恢复 CLAYER
                  )
@@ -1047,19 +1098,26 @@
                    *global_zd_eval*
                    ss_copy_sf))
                 
-               ;; 为分段点绘制连接件矩形
+               ;; 为分段点绘制连接件：优先插入 LTPJJ 块，无块时回退矩形
                (if my_breaks
                  (progn
-                   (if (not (tblsearch "LAYER" "LTPJJ")) 
+                   (if (not (tblsearch "LAYER" "LTPJJ"))
                      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "LTPJJ") (70 . 0) (62 . 2))))
                    (setvar "CLAYER" "LTPJJ")
                    (setq rect_half_w 250.0 rect_half_h 50.0)
                    (foreach bx my_breaks
                      (foreach y_orig *global_axis_y_list*
                        (setq cy (- y_orig copy_dist))
-                       (command "_.RECTANG" 
-                                "_NON" (list (- bx rect_half_w) (- cy rect_half_h) 0.0) 
-                                "_NON" (list (+ bx rect_half_w) (+ cy rect_half_h) 0.0))
+                       (if (tblsearch "BLOCK" "LTPJJ")
+                         (entmake (list '(0 . "INSERT")
+                                        '(2 . "LTPJJ")
+                                        '(8 . "LTPJJ")
+                                        (cons 10 (list bx cy 0.0))
+                                        '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                         (command "_.RECTANG"
+                                  "_NON" (list (- bx rect_half_w) (- cy rect_half_h) 0.0)
+                                  "_NON" (list (+ bx rect_half_w) (+ cy rect_half_h) 0.0))
+                       )
                      )
                    )
                    (setvar "CLAYER" "DIM") ;; 恢复到DIM图层，以免影响后续标注
