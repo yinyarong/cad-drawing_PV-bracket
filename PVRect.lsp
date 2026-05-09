@@ -539,8 +539,8 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist)
-  (if *last_ent_before_macro*
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del)
+  (if (and *last_ent_before_macro* (= *global_elev_type* 0))
     (progn
       (setq e_cur *last_ent_before_macro*)
       (setq ss (ssadd))
@@ -589,6 +589,24 @@
       )
     )
   )
+  (if (and *first_ent_global* *last_ent_before_macro*
+           (not (equal *first_ent_global* *last_ent_before_macro*))
+           (not (= *global_elev_type* 0)))
+    (progn
+      (setq ss_del (ssadd)
+            e_del (entnext *first_ent_global*))
+      (while e_del
+        (ssadd e_del ss_del)
+        (if (equal e_del *last_ent_before_macro*)
+          (setq e_del nil)
+          (setq e_del (entnext e_del))
+        )
+      )
+      (if (> (sslength ss_del) 0)
+        (command "_.ERASE" ss_del "")
+      )
+    )
+  )
   (setq *last_ent_before_macro* nil)
   (command "_.-LAYER" "_ON" "purlin,beam" "")
   (if *global_h*
@@ -606,19 +624,24 @@
         (progn
           (setq ss_copy_sf (if *global_sf* *global_sf* 2.0))
           (setq copy_dist (* (+ 5000.0 (* 2.0 *global_h*)) ss_copy_sf))
-          (command "_.COPY" ss_copy "" "_NON" '(0.0 0.0 0.0) "_NON" (list 0.0 (- copy_dist) 0.0))
-          (if (and *global_n* *global_m* *global_center_x* title_y)
+          (if (= *global_elev_type* 0)
             (progn
-              (setq title_y (- title_y copy_dist))
-              (setq t1_str (strcat (itoa *global_n*) "x" (itoa *global_m*) " PV Mount Structure Layout"))
-              (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list *global_center_x* title_y 0)) (cons 40 550.0) (cons 1 t1_str) '(72 . 1) (cons 11 (list *global_center_x* title_y 0))))
-              (setq e_t1 (entlast) tb (textbox (entget e_t1)) t1_width (- (caadr tb) (caar tb)) t1_minX (- *global_center_x* (/ t1_width 2.0)) t1_maxX (+ *global_center_x* (/ t1_width 2.0)))
-              (setq gap_ext 300.0 line_x1 (- t1_minX gap_ext) line_x2 (+ t1_maxX gap_ext) line_top_y (- title_y 250.0) line_bot_y (- line_top_y 150.0))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
-              (setq t2_x (+ line_x2 400.0))
-              (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list t2_x title_y 0)) (cons 40 400.0) (cons 1 "1:50") '(72 . 0) (cons 11 (list t2_x title_y 0))))
+              (command "_.COPY" ss_copy "" "_NON" '(0.0 0.0 0.0) "_NON" (list 0.0 (- copy_dist) 0.0))
+              (if (and *global_n* *global_m* *global_center_x* title_y)
+                (progn
+                  (setq title_y (- title_y copy_dist))
+                  (setq t1_str (strcat (itoa *global_n*) "x" (itoa *global_m*) " PV Mount Structure Layout"))
+                  (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list *global_center_x* title_y 0)) (cons 40 550.0) (cons 1 t1_str) '(72 . 1) (cons 11 (list *global_center_x* title_y 0))))
+                  (setq e_t1 (entlast) tb (textbox (entget e_t1)) t1_width (- (caadr tb) (caar tb)) t1_minX (- *global_center_x* (/ t1_width 2.0)) t1_maxX (+ *global_center_x* (/ t1_width 2.0)))
+                  (setq gap_ext 300.0 line_x1 (- t1_minX gap_ext) line_x2 (+ t1_maxX gap_ext) line_top_y (- title_y 250.0) line_bot_y (- line_top_y 150.0))
+                  (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
+                  (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
+                  (setq t2_x (+ line_x2 400.0))
+                  (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list t2_x title_y 0)) (cons 40 400.0) (cons 1 "1:50") '(72 . 0) (cons 11 (list t2_x title_y 0))))
+                )
+              )
             )
+            (setq copy_dist 0.0)
           )
           (if (and *global_axis_y_list* *global_startX* *global_dim_x_vert*)
             (progn
@@ -1137,50 +1160,54 @@
                  )
                )
                               
-               (setq my_breaks
-                 (PVRect_AddSegmentedHorizontalDim
-                   *global_startX*
-                   *global_endX*
-                   lower_bottom_axis_y
-                   lower_bottom_dim_y
-                   *global_vx_list*
-                   *global_pt_x*
-                   *global_w_eval*
-                   *global_gap*
-                   *global_m*
-                   *global_zd_eval*
-                   ss_copy_sf))
-                
-               ;; 为分段点绘制连接件：优先插入 LTPJJ 块，无块时回退矩形
-               (if my_breaks
+               (if (= *global_elev_type* 0)
                  (progn
-                   (if (not (tblsearch "LAYER" "LTPJJ"))
-                     (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "LTPJJ") (70 . 0) (62 . 2))))
-                   (setvar "CLAYER" "LTPJJ")
-                   (setq rect_half_w 250.0 rect_half_h 50.0)
-                   (foreach bx my_breaks
-                     (foreach y_orig *global_axis_y_list*
-                       (setq cy (- y_orig copy_dist))
-                       (if (tblsearch "BLOCK" "LTPJJ")
-                         (entmake (list '(0 . "INSERT")
-                                        '(2 . "LTPJJ")
-                                        '(8 . "LTPJJ")
-                                        (cons 10 (list bx cy 0.0))
-                                        '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
-                         (command "_.RECTANG"
-                                  "_NON" (list (- bx rect_half_w) (- cy rect_half_h) 0.0)
-                                  "_NON" (list (+ bx rect_half_w) (+ cy rect_half_h) 0.0))
+                   (setq my_breaks
+                     (PVRect_AddSegmentedHorizontalDim
+                       *global_startX*
+                       *global_endX*
+                       lower_top_axis_y
+                       lower_top_dim_y
+                       *global_vx_list*
+                       *global_pt_x*
+                       *global_w_eval*
+                       *global_gap*
+                       *global_m*
+                       *global_zd_eval*
+                       ss_copy_sf))
+
+                   ;; 为分段点绘制连接件：优先插入 LTPJJ 块，无块时回退矩形
+                   (if my_breaks
+                     (progn
+                       (if (not (tblsearch "LAYER" "LTPJJ"))
+                         (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "LTPJJ") (70 . 0) (62 . 2))))
+                       (setvar "CLAYER" "LTPJJ")
+                       (setq rect_half_w 250.0 rect_half_h 50.0)
+                       (foreach bx my_breaks
+                         (foreach y_orig *global_axis_y_list*
+                           (setq cy (- y_orig copy_dist))
+                           (if (tblsearch "BLOCK" "LTPJJ")
+                             (entmake (list '(0 . "INSERT")
+                                            '(2 . "LTPJJ")
+                                            '(8 . "LTPJJ")
+                                            (cons 10 (list bx cy 0.0))
+                                            '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                             (command "_.RECTANG"
+                                      "_NON" (list (- bx rect_half_w) (- cy rect_half_h) 0.0)
+                                      "_NON" (list (+ bx rect_half_w) (+ cy rect_half_h) 0.0))
+                           )
+                         )
                        )
+                       (setvar "CLAYER" "DIM") ;; 恢复到DIM图层，以免影响后续标注
                      )
                    )
-                   (setvar "CLAYER" "DIM") ;; 恢复到DIM图层，以免影响后续标注
+                   (setq i 0)
+                   (while (< i (1- (length *global_axis_y_list*)))
+                     (setq y_a (- (nth i *global_axis_y_list*) copy_dist) y_b (- (nth (1+ i) *global_axis_y_list*) copy_dist))
+                     (command "_.DIMLINEAR" "_NON" (list *global_startX* y_a 0.0) "_NON" (list *global_startX* y_b 0.0) "_NON" (list *global_dim_x_vert* y_a 0.0))
+                     (setq i (1+ i))
+                   )
                  )
-               )
-               (setq i 0)
-               (while (< i (1- (length *global_axis_y_list*)))
-                 (setq y_a (- (nth i *global_axis_y_list*) copy_dist) y_b (- (nth (1+ i) *global_axis_y_list*) copy_dist))
-                 (command "_.DIMLINEAR" "_NON" (list *global_startX* y_a 0.0) "_NON" (list *global_startX* y_b 0.0) "_NON" (list *global_dim_x_vert* y_a 0.0))
-                 (setq i (1+ i))
                )
             )
           )
