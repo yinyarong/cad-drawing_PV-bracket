@@ -515,7 +515,7 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y)
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2)
   (if *last_ent_before_macro*
     (progn
       (setq e_cur *last_ent_before_macro*)
@@ -600,18 +600,17 @@
                (setq lower_top_axis_y (- (apply 'max *global_axis_y_list*) copy_dist)
                      lower_top_dim_y (+ lower_top_axis_y (* 800.0 ss_copy_sf)))
                      
-               ;; 新增：在下图最上方横向 AXIS 轴线右侧端点处往右 4000 画 22000 长的水平线
-               (setq new_line_x1 (+ *global_endX* 4000.0)
-                     new_line_x2 (+ new_line_x1 22000.0)
-                     *global_new_line_x1* new_line_x1)  ;; 保存为全局变量，用于后续判断"右侧"
-               (entmake (list '(0 . "LINE") 
-                              '(8 . "DIM") 
-                              (cons 10 (list new_line_x1 lower_top_axis_y 0.0)) 
-                              (cons 11 (list new_line_x2 lower_top_axis_y 0.0))))
-                              
-               ;; 新增：在此水平直线最左端点向上 clearance*5 处，沿水平方向阵列 n 个 PV 矩形及对应的支架线，并统一旋转
-               (if *global_clearance*
+               ;; 右侧立面图：仅在 elevation != No 时绘制水平基线及全部内容
+               (if (and *global_clearance* (not (= *global_elev_type* 0)))
                  (progn
+                   ;; 在下图最上方横向 AXIS 轴线右侧端点处往右 4000 画 22000 长的水平线
+                   (setq new_line_x1 (+ *global_endX* 4000.0)
+                         new_line_x2 (+ new_line_x1 22000.0)
+                         *global_new_line_x1* new_line_x1)
+                   (entmake (list '(0 . "LINE")
+                                  '(8 . "DIM")
+                                  (cons 10 (list new_line_x1 lower_top_axis_y 0.0))
+                                  (cons 11 (list new_line_x2 lower_top_axis_y 0.0))))
                    (if (not (tblsearch "LAYER" "PV")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "PV") (70 . 0) (62 . 7))))
                    (if (not (tblsearch "LAYER" "AXIS")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "AXIS") (70 . 0) (62 . 1))))
                    (setvar "CLAYER" "PV")
@@ -786,16 +785,71 @@
                              U2_rot_x (car U2_rot)
                              U2_rot_y (cadr U2_rot))
 
-                       ;; 绘制 post-axis #1（左侧竖向立柱轴线）
+                       ;; 绘制 post-axis #1/#2，C/O-post 时延伸轴线并绘制截面矩形
                        (setvar "CLAYER" "AXIS")
+                       (cond
+                         ((= *global_elev_type* 1)  ;; C-post: 上延 175, 下延 7500
+                          (setq post1_top_y  (+ U1_rot_y 175.0)
+                                post1_bot_y  (- lower_top_axis_y 7500.0)
+                                post2_top_y  (+ U2_rot_y 175.0)
+                                post2_bot_y  (- lower_top_axis_y 7500.0)
+                                post_half_w1 (* *global_post_w* 2.5)
+                                post_half_w2 (* (- *global_post_w* 15.0) 2.5))
+                         )
+                         ((= *global_elev_type* 2)  ;; O-post: 仅上延 175
+                          (setq post1_top_y  (+ U1_rot_y 175.0)
+                                post1_bot_y  lower_top_axis_y
+                                post2_top_y  (+ U2_rot_y 175.0)
+                                post2_bot_y  lower_top_axis_y
+                                post_half_w1 (* *global_post_d* 2.5)
+                                post_half_w2 (* (- *global_post_d* 5.0) 2.5))
+                         )
+                         (t  ;; fallback
+                          (setq post1_top_y U1_rot_y  post1_bot_y lower_top_axis_y
+                                post2_top_y U2_rot_y  post2_bot_y lower_top_axis_y)
+                         )
+                       )
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
-                                      (cons 10 (list U1_rot_x U1_rot_y 0.0))
-                                      (cons 11 (list U1_rot_x lower_top_axis_y 0.0))))
-
-                       ;; 绘制 post-axis #2（右侧竖向立柱轴线）
+                                      (cons 10 (list U1_rot_x post1_top_y 0.0))
+                                      (cons 11 (list U1_rot_x post1_bot_y 0.0))))
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
-                                      (cons 10 (list U2_rot_x U2_rot_y 0.0))
-                                      (cons 11 (list U2_rot_x lower_top_axis_y 0.0))))
+                                      (cons 10 (list U2_rot_x post2_top_y 0.0))
+                                      (cons 11 (list U2_rot_x post2_bot_y 0.0))))
+                       ;; C-post / O-post: 每根立柱各画两个居中截面矩形
+                       (if (or (= *global_elev_type* 1) (= *global_elev_type* 2))
+                         (progn
+                           (setvar "CLAYER" "beam")
+                           ;; U1 outer rect
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(90 . 4) '(70 . 1)
+                                          (list 10 (- U1_rot_x post_half_w1) post1_top_y)
+                                          (list 10 (+ U1_rot_x post_half_w1) post1_top_y)
+                                          (list 10 (+ U1_rot_x post_half_w1) post1_bot_y)
+                                          (list 10 (- U1_rot_x post_half_w1) post1_bot_y)))
+                           ;; U1 inner rect
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(90 . 4) '(70 . 1)
+                                          (list 10 (- U1_rot_x post_half_w2) post1_top_y)
+                                          (list 10 (+ U1_rot_x post_half_w2) post1_top_y)
+                                          (list 10 (+ U1_rot_x post_half_w2) post1_bot_y)
+                                          (list 10 (- U1_rot_x post_half_w2) post1_bot_y)))
+                           ;; U2 outer rect
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(90 . 4) '(70 . 1)
+                                          (list 10 (- U2_rot_x post_half_w1) post2_top_y)
+                                          (list 10 (+ U2_rot_x post_half_w1) post2_top_y)
+                                          (list 10 (+ U2_rot_x post_half_w1) post2_bot_y)
+                                          (list 10 (- U2_rot_x post_half_w1) post2_bot_y)))
+                           ;; U2 inner rect
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(90 . 4) '(70 . 1)
+                                          (list 10 (- U2_rot_x post_half_w2) post2_top_y)
+                                          (list 10 (+ U2_rot_x post_half_w2) post2_top_y)
+                                          (list 10 (+ U2_rot_x post_half_w2) post2_bot_y)
+                                          (list 10 (- U2_rot_x post_half_w2) post2_bot_y)))
+                           (setvar "CLAYER" "AXIS")
+                         )
+                       )
 
                        ;; 保存左侧post-axis的最低点作为缩放中心
                        (setq *scale_center_x* U1_rot_x
@@ -883,86 +937,30 @@
                                  "_NON" (list ax_R_rx ax_R_ry 0.0)
                                  "_NON" (list total_dim_loc_x total_dim_loc_y 0.0))
 
-                        ;; 新增: 沿着 angle 方向创建矩形（beam 图层）
-                        ;; 矩形长度方向同斜轴线，宽度 400mm（实际长度，不考虑缩放）
-                        ;; 以斜轴线为中轴线布置
-                        (if (not (tblsearch "LAYER" "beam")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "beam") (70 . 0) (62 . 4))))
-                        (setvar "CLAYER" "beam")
-                        (setq beam_width 400.0)  ;; 400mm 实际宽度，不考虑缩放
-                        (setq half_beam_width (/ beam_width 2.0))
-                        ;; 计算矩形四个顶点
-                        ;; 斜轴线方向向量为 (ax_R_rx - ax_L_rx, ax_R_ry - ax_L_ry)
-                        ;; 法向向量已经计算为 (dim_nx, dim_ny)
-                        (setq rect_p1_x (+ ax_L_rx (* dim_nx half_beam_width))
-                              rect_p1_y (+ ax_L_ry (* dim_ny half_beam_width))
-                              rect_p2_x (+ ax_R_rx (* dim_nx half_beam_width))
-                              rect_p2_y (+ ax_R_ry (* dim_ny half_beam_width))
-                              rect_p3_x (- ax_R_rx (* dim_nx half_beam_width))
-                              rect_p3_y (- ax_R_ry (* dim_ny half_beam_width))
-                              rect_p4_x (- ax_L_rx (* dim_nx half_beam_width))
-                              rect_p4_y (- ax_L_ry (* dim_ny half_beam_width)))
-                        ;; 创建矩形（LWPOLYLINE）
-                        (entmake (list '(0 . "LWPOLYLINE")
-                                       '(100 . "AcDbEntity")
-                                       '(100 . "AcDbPolyline")
-                                       '(8 . "beam")
-                                       '(90 . 4)
-                                       '(70 . 1)
-                                       (list 10 rect_p1_x rect_p1_y)
-                                       (list 10 rect_p2_x rect_p2_y)
-                                       (list 10 rect_p3_x rect_p3_y)
-                                       (list 10 rect_p4_x rect_p4_y)))
-
-                        ;; 新增: 创建第二个矩形，宽度 380mm，线型 DASH
-                        (if (not (tblsearch "LTYPE" "DASH")) (entmake '((0 . "LTYPE") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLinetypeTableRecord") (2 . "DASH") (70 . 0) (3 . "DASH") (72 . 65) (73 . 2) (40 . 15.0) (49 . 10.0) (49 . -5.0))))
-                        (setq dash_width 380.0)  ;; 380mm 实际宽度，不考虑缩放
-                        (setq half_dash_width (/ dash_width 2.0))
-                        ;; 计算第二个矩形四个顶点
-                        (setq dash_p1_x (+ ax_L_rx (* dim_nx half_dash_width))
-                              dash_p1_y (+ ax_L_ry (* dim_ny half_dash_width))
-                              dash_p2_x (+ ax_R_rx (* dim_nx half_dash_width))
-                              dash_p2_y (+ ax_R_ry (* dim_ny half_dash_width))
-                              dash_p3_x (- ax_R_rx (* dim_nx half_dash_width))
-                              dash_p3_y (- ax_R_ry (* dim_ny half_dash_width))
-                              dash_p4_x (- ax_L_rx (* dim_nx half_dash_width))
-                              dash_p4_y (- ax_L_ry (* dim_ny half_dash_width)))
-                        ;; 创建 DASH 线型矩形（LWPOLYLINE）
-                        (entmake (list '(0 . "LWPOLYLINE")
-                                       '(100 . "AcDbEntity")
-                                       '(100 . "AcDbPolyline")
-                                       '(8 . "beam")
-                                       '(6 . "DASH")
-                                       '(90 . 4)
-                                       '(70 . 1)
-                                       (list 10 dash_p1_x dash_p1_y)
-                                       (list 10 dash_p2_x dash_p2_y)
-                                       (list 10 dash_p3_x dash_p3_y)
-                                       (list 10 dash_p4_x dash_p4_y)))
-
-                        ;; 新增: 创建第三个矩形，宽度 250mm，线型 DASH
-                        (setq dash_width3 250.0)  ;; 250mm 实际宽度，不考虑缩放
-                        (setq half_dash_width3 (/ dash_width3 2.0))
-                        ;; 计算第三个矩形四个顶点
-                        (setq dash3_p1_x (+ ax_L_rx (* dim_nx half_dash_width3))
-                              dash3_p1_y (+ ax_L_ry (* dim_ny half_dash_width3))
-                              dash3_p2_x (+ ax_R_rx (* dim_nx half_dash_width3))
-                              dash3_p2_y (+ ax_R_ry (* dim_ny half_dash_width3))
-                              dash3_p3_x (- ax_R_rx (* dim_nx half_dash_width3))
-                              dash3_p3_y (- ax_R_ry (* dim_ny half_dash_width3))
-                              dash3_p4_x (- ax_L_rx (* dim_nx half_dash_width3))
-                              dash3_p4_y (- ax_L_ry (* dim_ny half_dash_width3)))
-                        ;; 创建 DASH 线型矩形（LWPOLYLINE）
-                        (entmake (list '(0 . "LWPOLYLINE")
-                                       '(100 . "AcDbEntity")
-                                       '(100 . "AcDbPolyline")
-                                       '(8 . "beam")
-                                       '(6 . "DASH")
-                                       '(90 . 4)
-                                       '(70 . 1)
-                                       (list 10 dash3_p1_x dash3_p1_y)
-                                       (list 10 dash3_p2_x dash3_p2_y)
-                                       (list 10 dash3_p3_x dash3_p3_y)
-                                       (list 10 dash3_p4_x dash3_p4_y)))
+                        ;; 仅 C-post / O-post: 沿 beam-angle-axis 绘制斜向截面矩形（beam 元素）
+                        (if (or (= *global_elev_type* 1) (= *global_elev_type* 2))
+                          (progn
+                            (if (not (tblsearch "LAYER" "beam")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "beam") (70 . 0) (62 . 4))))
+                            (setvar "CLAYER" "beam")
+                            (setq beam_half_h  (* *global_beam_h* 2.5)
+                                  beam_half_h2 (* (- *global_beam_h* 30.0) 2.5))
+                            ;; outer rectangle
+                            (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                           '(8 . "beam") '(90 . 4) '(70 . 1)
+                                           (list 10 (+ ax_L_rx (* dim_nx beam_half_h)) (+ ax_L_ry (* dim_ny beam_half_h)))
+                                           (list 10 (+ ax_R_rx (* dim_nx beam_half_h)) (+ ax_R_ry (* dim_ny beam_half_h)))
+                                           (list 10 (- ax_R_rx (* dim_nx beam_half_h)) (- ax_R_ry (* dim_ny beam_half_h)))
+                                           (list 10 (- ax_L_rx (* dim_nx beam_half_h)) (- ax_L_ry (* dim_ny beam_half_h)))))
+                            ;; inner rectangle (h-beam - 2×15)
+                            (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                           '(8 . "beam") '(90 . 4) '(70 . 1)
+                                           (list 10 (+ ax_L_rx (* dim_nx beam_half_h2)) (+ ax_L_ry (* dim_ny beam_half_h2)))
+                                           (list 10 (+ ax_R_rx (* dim_nx beam_half_h2)) (+ ax_R_ry (* dim_ny beam_half_h2)))
+                                           (list 10 (- ax_R_rx (* dim_nx beam_half_h2)) (- ax_R_ry (* dim_ny beam_half_h2)))
+                                           (list 10 (- ax_L_rx (* dim_nx beam_half_h2)) (- ax_L_ry (* dim_ny beam_half_h2)))))
+                            (setvar "CLAYER" "AXIS")
+                          )
+                        )
 
                         ;; =============================================================================
                         ;; 插入块参照：Nut
@@ -1331,7 +1329,7 @@
   )
 
   ;; 清理全局变量（在复制轴线之后执行）
-  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil)
+  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil)
 
   (if *old_osmode_global* (progn (setvar "OSMODE" *old_osmode_global*) (setq *old_osmode_global* nil)))
   (if *old_layer_global* (progn (setvar "CLAYER" *old_layer_global*) (setq *old_layer_global* nil)))
@@ -1343,8 +1341,8 @@
 ;; 3. Main Entry Command
 ;; =============================================================================
 
-(defun c:PVRect ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str dialog_done w h n m hole zn zd zde clearance angle nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list)
-  (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" dialog_done nil)
+(defun c:PVRect ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str post_w_str post_d_str beam_h_str dialog_done elev_type post_w post_d beam_h w h n m hole zn zd zde clearance angle nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list)
+  (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" elev_str "0" post_w_str "80" post_d_str "60" beam_h_str "1" dialog_done nil)
   
   (while (not dialog_done)
     (setq dcl_file (vl-filename-mktemp "pvrect.dcl") f (open dcl_file "w"))
@@ -1375,6 +1373,12 @@
     (write-line "      : edit_box { label = \"S-edge (zd-e):\"; key = \"val_zde\"; edit_width = 10; }" f)
     (write-line "    }" f)
     (write-line "  }" f)
+    (write-line "  : boxed_column { label = \"Elevation\";" f)
+    (write-line "    : row { : popup_list { label = \"Type:\"; key = \"val_elevation\"; edit_width = 12; } : spacer { width = 5; } }" f)
+    (write-line "    : row { : edit_box { label = \"Post Width W (mm):\"; key = \"val_post_w\"; edit_width = 8; } : spacer { width = 10; } }" f)
+    (write-line "    : row { : edit_box { label = \"Post Diam D (mm):\"; key = \"val_post_d\"; edit_width = 8; } : spacer { width = 10; } }" f)
+    (write-line "    : row { : popup_list { label = \"Beam H (mm):\"; key = \"val_beam_h\"; edit_width = 10; } : spacer { width = 5; } }" f)
+    (write-line "  }" f)
     (write-line "  : spacer { height = 1; }" f)
     (write-line "  ok_cancel;" f)
     (write-line "}" f)
@@ -1390,8 +1394,22 @@
     
     (set_tile "val_h" h_str) (set_tile "val_w" w_str) (set_tile "val_n" n_str) (set_tile "val_m" m_str) (set_tile "val_hole" hole_str) (set_tile "val_zn" zn_str) (set_tile "val_zd" zd_str) (set_tile "val_zde" zde_str)
     (set_tile "val_clearance" clearance_str) (set_tile "val_angle" angle_str) (set_tile "val_nop" (if (= nop_str "3") "1" "0"))
+    (start_list "val_elevation")
+    (add_list "No") (add_list "C-post") (add_list "O-post")
+    (end_list)
+    (set_tile "val_elevation" elev_str)
+    (set_tile "val_post_w" post_w_str)
+    (set_tile "val_post_d" post_d_str)
+    (start_list "val_beam_h")
+    (add_list "80") (add_list "100") (add_list "125") (add_list "150") (add_list "175") (add_list "200") (add_list "250") (add_list "300")
+    (end_list)
+    (set_tile "val_beam_h" beam_h_str)
+    (mode_tile "val_post_w" (if (= elev_str "1") 0 1))
+    (mode_tile "val_post_d" (if (= elev_str "2") 0 1))
+    (mode_tile "val_beam_h" (if (or (= elev_str "1") (= elev_str "2")) 0 1))
     
-    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") nop_str (if (= (get_tile \"val_nop\") \"1\") \"3\" \"2\")) (done_dialog 1)")
+    (action_tile "val_elevation" "(mode_tile \"val_post_w\" (if (= (get_tile \"val_elevation\") \"1\") 0 1)) (mode_tile \"val_post_d\" (if (= (get_tile \"val_elevation\") \"2\") 0 1)) (mode_tile \"val_beam_h\" (if (or (= (get_tile \"val_elevation\") \"1\") (= (get_tile \"val_elevation\") \"2\")) 0 1))")
+    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") nop_str (if (= (get_tile \"val_nop\") \"1\") \"3\" \"2\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") beam_h_str (get_tile \"val_beam_h\")) (done_dialog 1)")
     (action_tile "cancel" "(done_dialog 0)")
     (action_tile "btn_import" "(PVRect_ImportExcel)")
     
@@ -1403,7 +1421,7 @@
 
   (if (= res 1)
     (progn
-      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle (atof angle_str) nop (atoi nop_str))
+      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle (atof angle_str) nop (atoi nop_str) elev_type (atoi elev_str) post_w (atof post_w_str) post_d (atof post_d_str) beam_h (nth (atoi beam_h_str) '(80.0 100.0 125.0 150.0 175.0 200.0 250.0 300.0)))
       (if (and (> h 0) (> w 0) (> n 0) (> m 0) (> hole 0))
         (progn
           (setq pt (getpoint "\nSelect insertion point: "))
@@ -1666,7 +1684,7 @@
                   (setvar "CLAYER" "AXIS") 
                   ;; Turn OFF everything that could interfere with selection (especially PV)
                   (command "_.-LAYER" "_OFF" "purlin,beam,PV,DIM" "")
-                  (setq *last_ent_before_macro* (entlast) *global_n* n *global_m* m *global_zn* zn *global_center_x* center_x *global_axis_y2_baseline* axis_y2 *global_h* h *global_hole* hole *global_sf* SF *global_startX* startX *global_endX* endX *global_dim_x_vert* dim_x_vert *global_pt_x* (car pt) *global_w_eval* w_eval *global_gap* gap *global_start_vx* start_vx *global_zd_eval* zd_eval *global_dim_y* dim_y *global_dim_y2* dim_y2 *global_top_y* top_y *global_vx_list* vx_list *global_bottom_y* bottom_y *global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *global_clearance* clearance *global_angle* angle *global_nop* nop *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *old_osmode_global* old_osmode *old_layer_global* old_layer)
+                  (setq *last_ent_before_macro* (entlast) *global_n* n *global_m* m *global_zn* zn *global_center_x* center_x *global_axis_y2_baseline* axis_y2 *global_h* h *global_hole* hole *global_sf* SF *global_startX* startX *global_endX* endX *global_dim_x_vert* dim_x_vert *global_pt_x* (car pt) *global_w_eval* w_eval *global_gap* gap *global_start_vx* start_vx *global_zd_eval* zd_eval *global_dim_y* dim_y *global_dim_y2* dim_y2 *global_top_y* top_y *global_vx_list* vx_list *global_bottom_y* bottom_y *global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *global_clearance* clearance *global_angle* angle *global_nop* nop *global_elev_type* elev_type *global_post_w* post_w *global_post_d* post_d *global_beam_h* beam_h *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *old_osmode_global* old_osmode *old_layer_global* old_layer)
                   (command "_.ZOOM" "_E")
                   ;; Reverting to stable sequence with 5 Enters to ensure loop exit
                   (setq cmd_str (strcat "ZHWBZH\n" (rtos click_x 2 4) "," (rtos click_y 2 4) "\n\n\n\n\n" "(PVRect_PostFix)\n"))
