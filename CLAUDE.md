@@ -51,8 +51,18 @@ APPLOAD → 选择文件 → 加载
 | `nop` | 每块 PV 檩条数 | 2 |
 | `zn` | 支架数量 | 3 |
 | `zd` / `zd-e` | 支架间距 / 边缘间距（mm） | 3800 |
-| `clearance` | 间隙（mm） | 400 |
+| `clearance` | 净空高度（mm） | 400 |
 | `angle` | 旋转角度（°） | 20 |
+| `purlin_H` | 檩条支架高度（mm），立面图中 PV 底部向下延伸量 | 120 |
+| `beam_H` | 梁截面高度（mm），立面图中梁矩形高度 | 100 |
+
+### 立面图几何优先级（元素紧密对齐）
+
+1. **净空**：地平线（`lower_top_axis_y`）→ PV 底部（`pv_start_y = ground + clearance × 5`）精确控制
+2. **檩条支架**：从 `pv_start_y` 向下 `purlin_H × 5` CAD 单位到 `purlin_bot_y`（底部 = 梁顶面）
+3. **梁**：梁中心轴（`beam_axis_y = purlin_bot_y − beam_H × 2.5`），梁顶面与檩条底部对齐
+
+全局传递：`*global_purlin_H*`（mm）、`*global_beam_h*`（mm）
 
 ### 图层系统
 

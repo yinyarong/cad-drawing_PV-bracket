@@ -508,6 +508,30 @@
 
 ;; =============================================================================
 ;; 2. Post-processing (Stable logic from v33/v34)
+
+;; 根据 purlin_H (mm) 找最近的 Purlin-Bracket-XX 块（XX 为 5mm 步进，范围 60~95）
+;; 返回块名字符串，若范围内无任何块则返回 nil
+;; 从 h_round 开始向外扩展搜索，每次 ±5mm，先查低侧再查高侧
+(defun PVRect_FindPurlinBlock (purlin_H / h_round step found_name)
+  (setq h_round (max 60 (min 95 (* 5 (fix (/ (+ purlin_H 2.5) 5.0)))))
+        found_name nil
+        step 0)
+  (while (and (null found_name) (<= step 35))
+    ;; 先尝试 h_round-step（含 step=0 即精确值）
+    (if (and (>= (- h_round step) 60)
+             (tblsearch "BLOCK" (strcat "Purlin-Bracket-" (itoa (- h_round step)))))
+      (setq found_name (strcat "Purlin-Bracket-" (itoa (- h_round step))))
+    )
+    ;; 再尝试 h_round+step（step>0 时才有意义）
+    (if (and (null found_name) (> step 0)
+             (<= (+ h_round step) 95)
+             (tblsearch "BLOCK" (strcat "Purlin-Bracket-" (itoa (+ h_round step)))))
+      (setq found_name (strcat "Purlin-Bracket-" (itoa (+ h_round step))))
+    )
+    (if (null found_name) (setq step (+ step 5)))
+  )
+  found_name
+)
 ;;
 ;; 生成的轴线类型说明：
 ;; - post-axis: 右侧图形中的两根竖向立柱轴线（U1, U2）
@@ -515,7 +539,7 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2)
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist)
   (if *last_ent_before_macro*
     (progn
       (setq e_cur *last_ent_before_macro*)
@@ -537,20 +561,24 @@
             )
             (setq idx (1+ idx))
           )
-          (if (> global_min_y 1e98) (setq global_min_y (- *global_axis_y2_baseline* 5000.0)))
+          ;; Use *global_bottom_dim_y* as the reliable title anchor (set in main command).
+          ;; After the MOVE +1500, the drawing bottom is at (*global_bottom_dim_y* + 1500),
+          ;; so placing title at *global_bottom_dim_y* puts it exactly 1500 below the moved bottom.
           (if (and *global_n* *global_m* *global_center_x*)
             (progn
-              (if (not (tblsearch "LAYER" "NUM")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "NUM") (70 . 0) (62 . 7))))
               (if (not (tblsearch "STYLE" "TIMES")) (entmake '((0 . "STYLE") (100 . "AcDbSymbolTableRecord") (100 . "AcDbTextStyleTableRecord") (2 . "TIMES") (70 . 0) (40 . 0.0) (41 . 1.0) (3 . "times.ttf"))))
-              (setq title_y (- global_min_y 1500.0))
+              (if (not (tblsearch "LAYER" "NUM")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "NUM") (70 . 0) (62 . 7))))
+              (setq title_y (if *global_bottom_y*
+                               (- *global_bottom_y* (* 2500.0 (if *global_sf* *global_sf* 2.0)))
+                               (if *global_bottom_dim_y* *global_bottom_dim_y* (- *global_axis_y2_baseline* 6500.0))))
               (setq t1_str (strcat (itoa *global_n*) "x" (itoa *global_m*) " Module layout"))
               (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list *global_center_x* title_y 0)) (cons 40 550.0) (cons 1 t1_str) '(72 . 1) (cons 11 (list *global_center_x* title_y 0))))
               (setq e_t1 (entlast) *title_ents_list* (list e_t1))
               (setq tb (textbox (entget e_t1)) t1_width (- (caadr tb) (caar tb)) t1_minX (- *global_center_x* (/ t1_width 2.0)) t1_maxX (+ *global_center_x* (/ t1_width 2.0)))
               (setq gap_ext 300.0 line_x1 (- t1_minX gap_ext) line_x2 (+ t1_maxX gap_ext) line_top_y (- title_y 250.0) line_bot_y (- line_top_y 150.0))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "NUM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
+              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
               (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "NUM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
+              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
               (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
               (setq t2_x (+ line_x2 400.0))
               (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list t2_x title_y 0)) (cons 40 400.0) (cons 1 "1:50") '(72 . 0) (cons 11 (list t2_x title_y 0))))
@@ -586,8 +614,8 @@
               (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list *global_center_x* title_y 0)) (cons 40 550.0) (cons 1 t1_str) '(72 . 1) (cons 11 (list *global_center_x* title_y 0))))
               (setq e_t1 (entlast) tb (textbox (entget e_t1)) t1_width (- (caadr tb) (caar tb)) t1_minX (- *global_center_x* (/ t1_width 2.0)) t1_maxX (+ *global_center_x* (/ t1_width 2.0)))
               (setq gap_ext 300.0 line_x1 (- t1_minX gap_ext) line_x2 (+ t1_maxX gap_ext) line_top_y (- title_y 250.0) line_bot_y (- line_top_y 150.0))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "NUM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "NUM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
+              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
+              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
               (setq t2_x (+ line_x2 400.0))
               (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list t2_x title_y 0)) (cons 40 400.0) (cons 1 "1:50") '(72 . 0) (cons 11 (list t2_x title_y 0))))
             )
@@ -598,7 +626,9 @@
                (setvar "CLAYER" "DIM")
                (if (tblsearch "DIMSTYLE" "TSSD_50_100") (command "-DIMSTYLE" "_R" "TSSD_50_100"))
                (setq lower_top_axis_y (- (apply 'max *global_axis_y_list*) copy_dist)
-                     lower_top_dim_y (+ lower_top_axis_y (* 800.0 ss_copy_sf)))
+                     lower_top_dim_y (+ lower_top_axis_y (* 800.0 ss_copy_sf))
+                     lower_bottom_axis_y (- (apply 'min *global_axis_y_list*) copy_dist)
+                     lower_bottom_dim_y (- lower_bottom_axis_y (* 800.0 ss_copy_sf)))
                      
                ;; 右侧立面图：仅在 elevation != No 时绘制水平基线及全部内容
                (if (and *global_clearance* (not (= *global_elev_type* 0)))
@@ -616,10 +646,14 @@
                    (setvar "CLAYER" "PV")
                    (setq pv_start_x new_line_x1
                          pv_start_y (+ lower_top_axis_y (* *global_clearance* 5.0))
+                         purlin_H_cad (* (if *global_purlin_H* *global_purlin_H* 80.0) 5.0)
+                         purlin_bot_y (- pv_start_y purlin_H_cad)
+                         beam_axis_y  (- purlin_bot_y (* (if *global_beam_h* *global_beam_h* 100.0) 2.5))
                          pi_idx 0
                          ss_pv (ssadd)
                          min_axis_x nil
                          max_axis_x nil)
+                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil)
                    (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
                    (while (< pi_idx *global_n*)
                      (setq cur_pv_x (+ pv_start_x (* pi_idx (* (+ *global_h* 20.0) 5.0)))
@@ -642,50 +676,58 @@
                          (if (not (tblsearch "LAYER" "AXIS")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "AXIS") (70 . 0) (62 . 1))))
                          (setq axis_x1 (+ cur_pv_x (* (/ (- *global_h* *global_hole*) 2.0) 5.0))
                                axis_x2 (+ axis_x1 (* *global_hole* 5.0)))
+                         ;; 短支架轴线：从 PV 底部延伸至梁中心轴（beam_axis_y），使端点落在 beam-angle-axis 上
                          (setvar "CLAYER" "AXIS")
                          (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                         (cons 10 (list axis_x1 pv_start_y 0.0))
-                                        (cons 11 (list axis_x1 (- pv_start_y 600.0) 0.0))))
+                                        (cons 11 (list axis_x1 beam_axis_y 0.0))))
                          (ssadd (entlast) ss_pv)
-                         
+                         (setq *elev_purlin_ents* (cons (entlast) *elev_purlin_ents*))
+
                          (if (and *global_nop* (= *global_nop* 3))
                            (progn
                              (setq axis_x_mid (/ (+ axis_x1 axis_x2) 2.0))
                              (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                             (cons 10 (list axis_x_mid pv_start_y 0.0))
-                                            (cons 11 (list axis_x_mid (- pv_start_y 600.0) 0.0))))
+                                            (cons 11 (list axis_x_mid beam_axis_y 0.0))))
                              (ssadd (entlast) ss_pv)
+                             (setq *elev_purlin_ents* (cons (entlast) *elev_purlin_ents*))
                            )
                          )
-                         
+
                          (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                         (cons 10 (list axis_x2 pv_start_y 0.0))
-                                        (cons 11 (list axis_x2 (- pv_start_y 600.0) 0.0))))
+                                        (cons 11 (list axis_x2 beam_axis_y 0.0))))
                          (ssadd (entlast) ss_pv)
-                         
-                         ;; 在每个 AXIS 线段的最低点插入命名为相应的支架块 (如果存在)
-                         (setq block_name (if (and *global_nop* (= *global_nop* 3)) "Purlin-Bracket-clamp" "Purlin-Bracket"))
-                         (if (tblsearch "BLOCK" block_name)
+                         (setq *elev_purlin_ents* (cons (entlast) *elev_purlin_ents*))
+
+                         ;; 按 purlin_H 选取对应的 Purlin-Bracket-XX 块。
+                         ;; 插入点 = purlin_bot_y（梁顶面 = 支架底部），使支架底部贴梁、顶部贴 PV 底线，
+                         ;; 夹在 PV 底线与梁矩形之间。整个 ss_pv 组随后绕 pv_start 旋转 *global_angle* 度。
+                         (setq block_name (PVRect_FindPurlinBlock (if *global_purlin_H* *global_purlin_H* 80.0)))
+                         (if block_name
                            (progn
                              (entmake (list '(0 . "INSERT") (cons 2 block_name) '(8 . "AXIS")
-                                            (cons 10 (list axis_x1 (- pv_start_y 400.0) 0.0))
+                                            (cons 10 (list axis_x1 purlin_bot_y 0.0))
                                             '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
                              (ssadd (entlast) ss_pv)
-                             
+
                              (if (and *global_nop* (= *global_nop* 3))
                                (progn
                                  (entmake (list '(0 . "INSERT") (cons 2 block_name) '(8 . "AXIS")
-                                                (cons 10 (list axis_x_mid (- pv_start_y 400.0) 0.0))
+                                                (cons 10 (list axis_x_mid purlin_bot_y 0.0))
                                                 '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
                                  (ssadd (entlast) ss_pv)
                                )
                              )
-                             
+
                              (entmake (list '(0 . "INSERT") (cons 2 block_name) '(8 . "AXIS")
-                                            (cons 10 (list axis_x2 (- pv_start_y 400.0) 0.0))
+                                            (cons 10 (list axis_x2 purlin_bot_y 0.0))
                                             '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
                              (ssadd (entlast) ss_pv)
+                             (prompt (strcat "\n>>> Purlin bracket block: " block_name))
                            )
+                           (prompt "\n>>> Warning: no Purlin-Bracket-XX block found in range 60-95mm.")
                          )
                          
                          ;; 创建分段标注 (图层为 DIM，斜向上500)
@@ -737,14 +779,15 @@
                      )
                      (setq pi_idx (1+ pi_idx))
                    )
-                   ;; 新增：贯穿所有短支架线最低点并两端延长 600 的横向总图层线 AXIS
+                   ;; 贯穿所有短支架线最低点（purlin底部）并两端延长 600 的横向 AXIS 线
                    (if (and min_axis_x max_axis_x)
                      (progn
                        (setvar "CLAYER" "AXIS")
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
-                                      (cons 10 (list (- min_axis_x 600.0) (- pv_start_y 600.0) 0.0))
-                                      (cons 11 (list (+ max_axis_x 600.0) (- pv_start_y 600.0) 0.0))))
+                                      (cons 10 (list (- min_axis_x 600.0) purlin_bot_y 0.0))
+                                      (cons 11 (list (+ max_axis_x 600.0) purlin_bot_y 0.0))))
                        (ssadd (entlast) ss_pv)
+                       (setq *elev_cross_ent* (entlast))
                      )
                    )
                    ;; 将所有生成的图形（含 PV、短支架、长轴线）统一绕总起点一起旋转
@@ -767,7 +810,7 @@
                               target_W_cad (* target_W_phys 5.0)
                               half_D (/ target_W_cad (* 2.0 (cos ang_rad)))
                               mid_orig_x (/ (+ min_axis_x max_axis_x) 2.0)
-                              mid_orig_y (- pv_start_y 600.0)
+                              mid_orig_y beam_axis_y
                               U1_orig_x (- mid_orig_x half_D)
                               U2_orig_x (+ mid_orig_x half_D))
                        
@@ -812,9 +855,11 @@
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                       (cons 10 (list U1_rot_x post1_top_y 0.0))
                                       (cons 11 (list U1_rot_x post1_bot_y 0.0))))
+                       (setq *elev_post_ents* (cons (entlast) *elev_post_ents*))
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                       (cons 10 (list U2_rot_x post2_top_y 0.0))
                                       (cons 11 (list U2_rot_x post2_bot_y 0.0))))
+                       (setq *elev_post_ents* (cons (entlast) *elev_post_ents*))
                        ;; C-post / O-post: 每根立柱各画两个居中截面矩形
                        (if (or (= *global_elev_type* 1) (= *global_elev_type* 2))
                          (progn
@@ -864,8 +909,8 @@
                         ;; =============================================================================
 
                         (setvar "OSMODE" 0)
-                        (setq ax_L_ox (- min_axis_x 600.0)  ax_L_oy (- pv_start_y 600.0)
-                              ax_R_ox (+ max_axis_x 600.0)  ax_R_oy (- pv_start_y 600.0)
+                        (setq ax_L_ox (- min_axis_x 600.0)  ax_L_oy beam_axis_y
+                              ax_R_ox (+ max_axis_x 600.0)  ax_R_oy beam_axis_y
                               rL (distance (list pv_start_x pv_start_y 0.0) (list ax_L_ox ax_L_oy 0.0))
                               aL (angle   (list pv_start_x pv_start_y 0.0) (list ax_L_ox ax_L_oy 0.0))
                               ax_L_rot (polar (list pv_start_x pv_start_y 0.0) (+ aL ang_rad) rL)
@@ -876,6 +921,13 @@
                               ax_R_rx (car ax_R_rot)  ax_R_ry (cadr ax_R_rot))
                         ;; 法向偏移单位向量(斜轴正上方)
                         (setq dim_nx (sin ang_rad) dim_ny (- (cos ang_rad)))
+
+                        ;; 绘制梁中心轴线（beam-angle-axis），始终绘制，与旋转后的 purlin-axis 端点相交
+                        (setvar "CLAYER" "AXIS")
+                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                                       (cons 10 (list ax_L_rx ax_L_ry 0.0))
+                                       (cons 11 (list ax_R_rx ax_R_ry 0.0))))
+                        (setq *elev_beam_ent* (entlast))
 
                         ;; 先计算两个交点坐标（brace-axis 与 beam-angle-axis 的交点）
                         (setq axis_total_len (distance (list ax_L_rx ax_L_ry 0.0) (list ax_R_rx ax_R_ry 0.0))
@@ -910,6 +962,7 @@
                                                           (PVRect_GetProjectionDist p2 axis_start_pt axis_end_pt)))))
 
                         ;; 第一道详细标注：相邻点对标注，统一偏移 1200
+                        (setvar "CLAYER" "DIM")
                         (setq dim_offset 1200.0
                               i 0)
                         (while (< i (1- (length sorted_points)))
@@ -1027,6 +1080,7 @@
                                        '(8 . "AXIS")
                                        (cons 10 (list line_start_x line_start_y 0.0))
                                        (cons 11 (list line_end_x line_end_y 0.0))))
+                        (setq *elev_brace_ents* (cons (entlast) *elev_brace_ents*))
 
                         ;; brace-axis #2: 创建右侧连接直线（AXIS 图层）
                         ;; 起点：post-axis #2（右侧竖向立柱轴线 U2）最低点向上 1000mm
@@ -1040,6 +1094,7 @@
                                        '(8 . "AXIS")
                                        (cons 10 (list line_start_r_x line_start_r_y 0.0))
                                        (cons 11 (list line_end_r_x line_end_r_y 0.0))))
+                        (setq *elev_brace_ents* (cons (entlast) *elev_brace_ents*))
                      )
                    )
 
@@ -1065,11 +1120,11 @@
                          elev_line_top_y (- elev_title_y 250.0)
                          elev_line_bot_y (- elev_line_top_y 150.0))
                    (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
-                                  '(8 . "NUM") '(90 . 2) (cons 43 50.0)
+                                  '(8 . "DIM") '(90 . 2) (cons 43 50.0)
                                   (list 10 elev_line_x1 elev_line_top_y)
                                   (list 10 elev_line_x2 elev_line_top_y)))
                    (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
-                                  '(8 . "NUM") '(90 . 2) '(43 . 0.0)
+                                  '(8 . "DIM") '(90 . 2) '(43 . 0.0)
                                   (list 10 elev_line_x1 elev_line_bot_y)
                                   (list 10 elev_line_x2 elev_line_bot_y)))
                    (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES")
@@ -1086,8 +1141,8 @@
                  (PVRect_AddSegmentedHorizontalDim
                    *global_startX*
                    *global_endX*
-                   lower_top_axis_y
-                   lower_top_dim_y
+                   lower_bottom_axis_y
+                   lower_bottom_dim_y
                    *global_vx_list*
                    *global_pt_x*
                    *global_w_eval*
@@ -1135,201 +1190,156 @@
     )
   )
   ;; =============================================================================
-  ;; Copy axis lines to right by 25000 units, scale 1/5, and change layers
-  ;; 只复制右侧轴线（LINE对象），不复制块和属性
+  ;; Entity-tracked axis copy: scale 1/5, assign target layers by type.
+  ;; Uses entities recorded during elevation drawing — no length heuristics.
+  ;; Cross AXIS line (*elev_cross_ent*) is excluded (it is not a structural member).
   ;; =============================================================================
-  (if *global_new_line_x1*
+  (if (and *global_new_line_x1* *scale_center_x* *scale_center_y*)
     (progn
-      (setq axis_layers '("AXIS" "purlin-axis" "beam-angle-axis" "brace-axis" "post-axis")
-            ss_axis (ssadd)
-            axis_copy_dist 25000.0
-            right_threshold *global_new_line_x1*)  ;; 右侧图形的起点 X 坐标
+      (setq axis_copy_dist 25000.0
+            scale_center   (list *scale_center_x* *scale_center_y* 0.0)
+            ss_scaled_all  (ssadd))
 
-      ;; 遍历所有轴线图层
-      (foreach layer_name axis_layers
-        (if (tblsearch "LAYER" layer_name)
-          (progn
-            (setq ss_layer (ssget "X" (list (cons 8 layer_name))))
-            (if ss_layer
-              (progn
-                (setq j 0)
-                (while (< j (sslength ss_layer))
-                  (setq ent (ssname ss_layer j))
-                  (setq edata (entget ent))
-                  (setq ent_type (cdr (assoc 0 edata)))
-                  ;; 只复制直线（LINE）
-                  (if (= ent_type "LINE")
-                    (progn
-                      ;; 检查直线的起点和终点是否在右侧（X坐标大于阈值）
-                      (setq pt10 (cdr (assoc 10 edata))
-                            pt11 (cdr (assoc 11 edata))
-                            x10 (car pt10)
-                            x11 (car pt11))
-                      ;; 如果起点或终点在右侧，则复制该轴线
-                      (if (or (> x10 right_threshold) (> x11 right_threshold))
-                        (ssadd ent ss_axis)
-                      )
-                    )
-                  )
-                  (setq j (1+ j))
-                )
-              )
-            )
-          )
-        )
-      )
+      ;; Create target layers
+      (if (not (tblsearch "LAYER" "01Purlin-01")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "01Purlin-01") (70 . 0) (62 . 3))))
+      (if (not (tblsearch "LAYER" "01Purlin-02")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "01Purlin-02") (70 . 0) (62 . 3))))
+      (if (not (tblsearch "LAYER" "02Beam"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "02Beam")      (70 . 0) (62 . 4))))
+      (if (not (tblsearch "LAYER" "03Brace"))     (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "03Brace")     (70 . 0) (62 . 1))))
+      (if (not (tblsearch "LAYER" "04Column"))    (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "04Column")    (70 . 0) (62 . 7))))
 
-      ;; 执行复制
-      (if (> (sslength ss_axis) 0)
+      ;; == 1. PURLIN short lines → 01Purlin-01 / 01Purlin-02 (left half / right half) ==
+      (if *elev_purlin_ents*
         (progn
-          (prompt (strcat "\n>>> Copying " (itoa (sslength ss_axis)) " right-side axis lines to the right by " (rtos axis_copy_dist 2 0) " units..."))
-
-          ;; 记录复制前的最后一个实体
-          (setq ent_before_copy (entlast))
-
-          ;; 执行复制
-          (command "_.COPY" ss_axis "" "_NON" '(0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
-
-          (prompt "\n>>> Right-side axis lines copied successfully.")
-
-          ;; 选择新复制的对象
-          (setq ss_new (ssadd)
-                ent_new (entnext ent_before_copy))
-          (while ent_new
-            (ssadd ent_new ss_new)
-            (setq ent_new (entnext ent_new))
+          (setq ss_purlin (ssadd))
+          (foreach en *elev_purlin_ents*
+            (if (and en (entget en)) (ssadd en ss_purlin))
           )
-
-          (if (> (sslength ss_new) 0)
+          (if (> (sslength ss_purlin) 0)
             (progn
-              (prompt (strcat "\n>>> Processing " (itoa (sslength ss_new)) " copied axis lines..."))
-
-              ;; 创建新图层
-              (if (not (tblsearch "LAYER" "01Purlin-01")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "01Purlin-01") (70 . 0) (62 . 3))))
-              (if (not (tblsearch "LAYER" "01Purlin-02")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "01Purlin-02") (70 . 0) (62 . 3))))
-              (if (not (tblsearch "LAYER" "02Beam")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "02Beam") (70 . 0) (62 . 4))))
-              (if (not (tblsearch "LAYER" "03Brace")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "03Brace") (70 . 0) (62 . 1))))
-              (if (not (tblsearch "LAYER" "04Column")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "04Column") (70 . 0) (62 . 7))))
-
-              ;; 先修改图层（在缩放之前，基于原始尺寸判断）
-
-              ;; 第一步：收集所有purlin-axis（短线，长度≤3000）
-              (setq purlin_list '()
-                    j 0)
-              (while (< j (sslength ss_new))
-                (setq ent (ssname ss_new j))
-                (setq edata (entget ent))
-                (setq pt10 (cdr (assoc 10 edata))
-                      pt11 (cdr (assoc 11 edata))
-                      x10 (car pt10)
-                      x11 (car pt11)
-                      line_len (distance pt10 pt11))
-
-                ;; 判断是否为purlin-axis（短线）
-                (if (<= line_len 3000.0)
-                  (progn
-                    ;; 使用复制前的X坐标来判断原位置
-                    (setq x10_original (- x10 axis_copy_dist)
-                          x11_original (- x11 axis_copy_dist)
-                          mid_x_original (/ (+ x10_original x11_original) 2.0))
-                    ;; 收集信息：(中点X坐标, 实体名)
-                    (setq purlin_list (cons (list mid_x_original ent) purlin_list))
-                  )
-                )
-                (setq j (1+ j))
+              (setq ent_before (entlast))
+              (command "_.COPY" ss_purlin "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+              ;; Collect new entities
+              (setq ss_new_purlin (ssadd)
+                    en_new (entnext ent_before))
+              (while en_new
+                (ssadd en_new ss_new_purlin)
+                (ssadd en_new ss_scaled_all)
+                (setq en_new (entnext en_new))
               )
-
-              ;; 第二步：按中点X坐标排序（从左到右）
-              (setq purlin_list (reverse purlin_list))  ;; 反转使其从左到右
-              (setq purlin_list (vl-sort purlin_list '(lambda (a b) (< (car a) (car b)))))
-              (setq purlin_count (length purlin_list))
-              (setq split_index (/ purlin_count 2))  ;; 分割点
-
-              ;; 第三步：创建两个分组
-              (setq purlin_left_list '()
-                    purlin_right_list '())
-              (setq k 0)
-              (while (< k purlin_count)
-                (if (< k split_index)
-                  (setq purlin_left_list (cons (cadr (nth k purlin_list)) purlin_left_list))
-                  (setq purlin_right_list (cons (cadr (nth k purlin_list)) purlin_right_list))
-                )
+              ;; Sort by start-point X to split left→01Purlin-02, right→01Purlin-01
+              (setq purlin_xlist nil
+                    i 0)
+              (while (< i (sslength ss_new_purlin))
+                (setq ent (ssname ss_new_purlin i)
+                      edata (entget ent)
+                      pt10 (cdr (assoc 10 edata)))
+                (setq purlin_xlist (cons (list (car pt10) ent) purlin_xlist))
+                (setq i (1+ i))
+              )
+              (setq purlin_xlist (vl-sort purlin_xlist '(lambda (a b) (< (car a) (car b)))))
+              (setq split_idx (/ (length purlin_xlist) 2)
+                    k 0)
+              (foreach px purlin_xlist
+                (setq ent (cadr px)
+                      edata (entget ent)
+                      tgt (if (< k split_idx) "01Purlin-02" "01Purlin-01"))
+                (entmod (subst (cons 8 tgt) (assoc 8 edata) edata))
                 (setq k (1+ k))
               )
-
-              ;; 第四步：处理所有轴线的图层修改
-              (setq j 0)
-              (while (< j (sslength ss_new))
-                (setq ent (ssname ss_new j))
-                (setq edata (entget ent))
-                (setq pt10 (cdr (assoc 10 edata))
-                      pt11 (cdr (assoc 11 edata))
-                      x10 (car pt10)
-                      x11 (car pt11)
-                      y10 (cadr pt10)
-                      y11 (cadr pt11)
-                      dx (- x11 x10)
-                      dy (- y11 y10)
-                      line_len (distance pt10 pt11)
-                      new_layer nil)
-
-                ;; 根据轴线特征判断类型并修改图层（基于原始尺寸）
-                (cond
-                  ;; 1. 竖向长线（post-axis）-> 04Column
-                  ((and (< (abs dx) 10.0) (> line_len 3000.0))
-                    (setq new_layer "04Column")
-                  )
-                  ;; 2. beam-angle-axis -> 02Beam
-                  ((> line_len 15000.0)
-                    (setq new_layer "02Beam")
-                  )
-                  ;; 3. brace-axis -> 03Brace
-                  ((and (> line_len 3000.0) (<= line_len 15000.0))
-                    (setq new_layer "03Brace")
-                  )
-                  ;; 4. purlin-axis -> 根据分组分配图层
-                  (t
-                    ;; 检查当前实体属于哪个分组
-                    (if (member ent purlin_left_list)
-                      (setq new_layer "01Purlin-02")  ;; 左侧分组
-                      (if (member ent purlin_right_list)
-                        (setq new_layer "01Purlin-01")  ;; 右侧分组
-                        (setq new_layer "01Purlin-01")  ;; 默认
-                      )
-                    )
-                  )
-                )
-
-                ;; 执行图层修改
-                (if new_layer
-                  (entmod (subst (cons 8 new_layer) (assoc 8 edata) edata))
-                )
-                (setq j (1+ j))
-              )
-              (prompt (strcat "\n>>> Purlin-axis grouped: " (itoa (length purlin_left_list)) " left, " (itoa (length purlin_right_list)) " right."))
-              (prompt "\n>>> Layer changes completed.")
-
-              ;; 使用保存的缩放中心执行缩放（在图层修改之后）
-              (if (and *scale_center_x* *scale_center_y*)
-                (progn
-                  (setq scale_center (list *scale_center_x* *scale_center_y* 0.0))
-                  (prompt (strcat "\n>>> Scaling copied axis lines by 1/5, center at (" (rtos (car scale_center) 2 0) "," (rtos (cadr scale_center) 2 0) ")..."))
-                  (command "_.SCALE" ss_new "" "_NON" scale_center 0.2)
-                  (prompt "\n>>> Scaling completed.")
-                )
-                (prompt "\n>>> Warning: Scale center not found, skipping scale.")
-              )
+              (prompt (strcat "\n>>> Purlin: " (itoa (sslength ss_new_purlin)) " lines copied ("
+                              (itoa split_idx) "→01Purlin-02, "
+                              (itoa (- (sslength ss_new_purlin) split_idx)) "→01Purlin-01)."))
             )
           )
         )
-        (prompt "\n>>> No right-side axis lines found to copy.")
+        (prompt "\n>>> No purlin axis lines tracked, skipping 01Purlin copy.")
+      )
+
+      ;; == 2. BEAM-ANGLE-AXIS → 02Beam ==
+      (if (and *elev_beam_ent* (entget *elev_beam_ent*))
+        (progn
+          (setq ss_beam (ssadd))
+          (ssadd *elev_beam_ent* ss_beam)
+          (setq ent_before (entlast))
+          (command "_.COPY" ss_beam "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+          (setq en_new (entnext ent_before))
+          (while en_new
+            (setq edata (entget en_new))
+            (entmod (subst (cons 8 "02Beam") (assoc 8 edata) edata))
+            (ssadd en_new ss_scaled_all)
+            (setq en_new (entnext en_new))
+          )
+          (prompt "\n>>> Beam-angle-axis copied → 02Beam.")
+        )
+        (prompt "\n>>> No beam-angle-axis tracked, skipping 02Beam copy.")
+      )
+
+      ;; == 3. POST-AXIS → 04Column ==
+      (if *elev_post_ents*
+        (progn
+          (setq ss_post (ssadd))
+          (foreach en *elev_post_ents*
+            (if (and en (entget en)) (ssadd en ss_post))
+          )
+          (if (> (sslength ss_post) 0)
+            (progn
+              (setq ent_before (entlast))
+              (command "_.COPY" ss_post "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+              (setq en_new (entnext ent_before))
+              (while en_new
+                (setq edata (entget en_new))
+                (entmod (subst (cons 8 "04Column") (assoc 8 edata) edata))
+                (ssadd en_new ss_scaled_all)
+                (setq en_new (entnext en_new))
+              )
+              (prompt (strcat "\n>>> Post-axis: " (itoa (sslength ss_post)) " lines copied → 04Column."))
+            )
+          )
+        )
+        (prompt "\n>>> No post-axis lines tracked, skipping 04Column copy.")
+      )
+
+      ;; == 4. BRACE-AXIS → 03Brace ==
+      (if *elev_brace_ents*
+        (progn
+          (setq ss_brace (ssadd))
+          (foreach en *elev_brace_ents*
+            (if (and en (entget en)) (ssadd en ss_brace))
+          )
+          (if (> (sslength ss_brace) 0)
+            (progn
+              (setq ent_before (entlast))
+              (command "_.COPY" ss_brace "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+              (setq en_new (entnext ent_before))
+              (while en_new
+                (setq edata (entget en_new))
+                (entmod (subst (cons 8 "03Brace") (assoc 8 edata) edata))
+                (ssadd en_new ss_scaled_all)
+                (setq en_new (entnext en_new))
+              )
+              (prompt (strcat "\n>>> Brace-axis: " (itoa (sslength ss_brace)) " lines copied → 03Brace."))
+            )
+          )
+        )
+        (prompt "\n>>> No brace-axis lines tracked, skipping 03Brace copy.")
+      )
+
+      ;; == Scale all copied lines 1/5 about the saved scale center ==
+      (if (> (sslength ss_scaled_all) 0)
+        (progn
+          (prompt (strcat "\n>>> Scaling " (itoa (sslength ss_scaled_all)) " lines 1/5 about ("
+                          (rtos (car scale_center) 2 0) "," (rtos (cadr scale_center) 2 0) ")..."))
+          (command "_.SCALE" ss_scaled_all "" "_NON" scale_center 0.2)
+          (prompt "\n>>> Scale-down completed.")
+        )
+        (prompt "\n>>> No axis lines to scale.")
       )
     )
-    (prompt "\n>>> Skipping axis copy: right section not generated.")
+    (prompt "\n>>> Skipping axis copy: right section not generated or scale center missing.")
   )
 
   ;; 清理全局变量（在复制轴线之后执行）
-  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil)
+  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil)
 
   (if *old_osmode_global* (progn (setvar "OSMODE" *old_osmode_global*) (setq *old_osmode_global* nil)))
   (if *old_layer_global* (progn (setvar "CLAYER" *old_layer_global*) (setq *old_layer_global* nil)))
@@ -1342,7 +1352,7 @@
 ;; =============================================================================
 
 (defun c:PVRect ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str post_w_str post_d_str beam_h_str dialog_done elev_type post_w post_d beam_h w h n m hole zn zd zde clearance angle nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list)
-  (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" elev_str "0" post_w_str "80" post_d_str "60" beam_h_str "1" dialog_done nil)
+  (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" elev_str "0" post_w_str "80" post_d_str "60" beam_h_str "100" purlin_H_str "80" dialog_done nil)
   
   (while (not dialog_done)
     (setq dcl_file (vl-filename-mktemp "pvrect.dcl") f (open dcl_file "w"))
@@ -1377,7 +1387,8 @@
     (write-line "    : row { : popup_list { label = \"Type:\"; key = \"val_elevation\"; edit_width = 12; } : spacer { width = 5; } }" f)
     (write-line "    : row { : edit_box { label = \"Post Width W (mm):\"; key = \"val_post_w\"; edit_width = 8; } : spacer { width = 10; } }" f)
     (write-line "    : row { : edit_box { label = \"Post Diam D (mm):\"; key = \"val_post_d\"; edit_width = 8; } : spacer { width = 10; } }" f)
-    (write-line "    : row { : popup_list { label = \"Beam H (mm):\"; key = \"val_beam_h\"; edit_width = 10; } : spacer { width = 5; } }" f)
+    (write-line "    : row { : edit_box { label = \"Beam H (mm):\"; key = \"val_beam_h\"; edit_width = 8; } : spacer { width = 10; } }" f)
+    (write-line "    : row { : edit_box { label = \"Purlin H (mm):\"; key = \"val_purlin_H\"; edit_width = 8; } : spacer { width = 10; } }" f)
     (write-line "  }" f)
     (write-line "  : spacer { height = 1; }" f)
     (write-line "  ok_cancel;" f)
@@ -1400,16 +1411,14 @@
     (set_tile "val_elevation" elev_str)
     (set_tile "val_post_w" post_w_str)
     (set_tile "val_post_d" post_d_str)
-    (start_list "val_beam_h")
-    (add_list "80") (add_list "100") (add_list "125") (add_list "150") (add_list "175") (add_list "200") (add_list "250") (add_list "300")
-    (end_list)
+    (set_tile "val_purlin_H" purlin_H_str)
     (set_tile "val_beam_h" beam_h_str)
     (mode_tile "val_post_w" (if (= elev_str "1") 0 1))
     (mode_tile "val_post_d" (if (= elev_str "2") 0 1))
     (mode_tile "val_beam_h" (if (or (= elev_str "1") (= elev_str "2")) 0 1))
     
     (action_tile "val_elevation" "(mode_tile \"val_post_w\" (if (= (get_tile \"val_elevation\") \"1\") 0 1)) (mode_tile \"val_post_d\" (if (= (get_tile \"val_elevation\") \"2\") 0 1)) (mode_tile \"val_beam_h\" (if (or (= (get_tile \"val_elevation\") \"1\") (= (get_tile \"val_elevation\") \"2\")) 0 1))")
-    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") nop_str (if (= (get_tile \"val_nop\") \"1\") \"3\" \"2\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") beam_h_str (get_tile \"val_beam_h\")) (done_dialog 1)")
+    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") nop_str (if (= (get_tile \"val_nop\") \"1\") \"3\" \"2\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") beam_h_str (get_tile \"val_beam_h\") purlin_H_str (get_tile \"val_purlin_H\")) (done_dialog 1)")
     (action_tile "cancel" "(done_dialog 0)")
     (action_tile "btn_import" "(PVRect_ImportExcel)")
     
@@ -1421,7 +1430,7 @@
 
   (if (= res 1)
     (progn
-      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle (atof angle_str) nop (atoi nop_str) elev_type (atoi elev_str) post_w (atof post_w_str) post_d (atof post_d_str) beam_h (nth (atoi beam_h_str) '(80.0 100.0 125.0 150.0 175.0 200.0 250.0 300.0)))
+      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle (atof angle_str) nop (atoi nop_str) elev_type (atoi elev_str) post_w (atof post_w_str) post_d (atof post_d_str) beam_h (max 50.0 (if (> (atof beam_h_str) 0) (atof beam_h_str) 100.0)) purlin_H (max 60.0 (min 95.0 (if (> (atof purlin_H_str) 0) (atof purlin_H_str) 80.0))))
       (if (and (> h 0) (> w 0) (> n 0) (> m 0) (> hole 0))
         (progn
           (setq pt (getpoint "\nSelect insertion point: "))
@@ -1436,7 +1445,7 @@
               (if (not (tblsearch "LAYER" "PV")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "PV") (70 . 0) (62 . 7))))
               (if (not (tblsearch "LAYER" "STPM_SBEAM_THICK")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "STPM_SBEAM_THICK") (70 . 0) (62 . 7))))
               
-              (setq SF 2.0 h_eval (* h SF) w_eval (* w SF) hole_eval (* hole SF) zd_eval (* zd SF) zde_eval (* zde SF) gap (* 20.0 SF) extX (* 75.0 SF) axis_gap (/ hole_eval 2.0) purlin_half_h (* 25.0 SF) beam_half_w (* 25.0 SF) beam_shrink (* 350.0 SF))
+              (setq SF 2.0 h_eval (* h SF) w_eval (* w SF) hole_eval (* hole SF) zd_eval (* zd SF) zde_eval (* zde SF) gap (* 20.0 SF) extX (* 75.0 SF) axis_gap (/ hole_eval 2.0) purlin_half_h (* (/ purlin_H 2.0) SF) beam_half_w (* 25.0 SF) beam_shrink (* 350.0 SF))
               
               (setq old_layer (getvar "CLAYER") old_osmode (getvar "OSMODE"))
               (setvar "OSMODE" 0)
@@ -1684,7 +1693,7 @@
                   (setvar "CLAYER" "AXIS") 
                   ;; Turn OFF everything that could interfere with selection (especially PV)
                   (command "_.-LAYER" "_OFF" "purlin,beam,PV,DIM" "")
-                  (setq *last_ent_before_macro* (entlast) *global_n* n *global_m* m *global_zn* zn *global_center_x* center_x *global_axis_y2_baseline* axis_y2 *global_h* h *global_hole* hole *global_sf* SF *global_startX* startX *global_endX* endX *global_dim_x_vert* dim_x_vert *global_pt_x* (car pt) *global_w_eval* w_eval *global_gap* gap *global_start_vx* start_vx *global_zd_eval* zd_eval *global_dim_y* dim_y *global_dim_y2* dim_y2 *global_top_y* top_y *global_vx_list* vx_list *global_bottom_y* bottom_y *global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *global_clearance* clearance *global_angle* angle *global_nop* nop *global_elev_type* elev_type *global_post_w* post_w *global_post_d* post_d *global_beam_h* beam_h *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *old_osmode_global* old_osmode *old_layer_global* old_layer)
+                  (setq *last_ent_before_macro* (entlast) *global_n* n *global_m* m *global_zn* zn *global_center_x* center_x *global_axis_y2_baseline* axis_y2 *global_h* h *global_hole* hole *global_sf* SF *global_startX* startX *global_endX* endX *global_dim_x_vert* dim_x_vert *global_pt_x* (car pt) *global_w_eval* w_eval *global_gap* gap *global_start_vx* start_vx *global_zd_eval* zd_eval *global_dim_y* dim_y *global_dim_y2* dim_y2 *global_top_y* top_y *global_vx_list* vx_list *global_bottom_y* bottom_y *global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *global_clearance* clearance *global_angle* angle *global_nop* nop *global_elev_type* elev_type *global_post_w* post_w *global_post_d* post_d *global_beam_h* beam_h *global_purlin_H* purlin_H *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *old_osmode_global* old_osmode *old_layer_global* old_layer)
                   (command "_.ZOOM" "_E")
                   ;; Reverting to stable sequence with 5 Enters to ensure loop exit
                   (setq cmd_str (strcat "ZHWBZH\n" (rtos click_x 2 4) "," (rtos click_y 2 4) "\n\n\n\n\n" "(PVRect_PostFix)\n"))
