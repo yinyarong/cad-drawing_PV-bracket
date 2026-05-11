@@ -539,7 +539,7 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair)
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x)
   ;; For C/O-post: capture last entity before PostFix draws anything.
   ;; This boundary covers the main array AND any ZHWBZH-generated entities.
   (setq postfix_start_ent (if (not (= *global_elev_type* 0)) (entlast) nil))
@@ -660,7 +660,7 @@
                          ss_pv (ssadd)
                          min_axis_x nil
                          max_axis_x nil)
-                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil)
+                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil)
                    (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
                    (while (< pi_idx *global_n*)
                      (setq cur_pv_x (+ pv_start_x (* pi_idx (* (+ *global_h* 20.0) 5.0)))
@@ -835,40 +835,64 @@
                              U2_rot_x (car U2_rot)
                              U2_rot_y (cadr U2_rot))
 
+                       ;; O-post: 预算 Triangle-Connector Y (dim_ny 尚未定义，直接用 -cos(ang_rad))
+                       (if (= *global_elev_type* 2)
+                         (progn
+                           (setq opost_base_dist
+                             (cond
+                               ((and (>= *global_post_d* 60.0) (<= *global_post_d* 76.0)) 60.0)
+                               ((and (>  *global_post_d* 76.0) (<= *global_post_d* 89.0)) 65.0)
+                               (t 60.0)
+                             )
+                           )
+                           (setq opost_tri_dist_cad (* (+ opost_base_dist (/ *global_beam_h* 2.0)) 5.0)
+                                 opost_post_x1      (+ U1_rot_x (* (sin ang_rad) opost_tri_dist_cad))
+                                 opost_post_x2      (+ U2_rot_x (* (sin ang_rad) opost_tri_dist_cad))
+                                 opost_tri_top_y1   (+ U1_rot_y (* (- (cos ang_rad)) opost_tri_dist_cad))
+                                 opost_tri_top_y2   (+ U2_rot_y (* (- (cos ang_rad)) opost_tri_dist_cad)))
+                         )
+                       )
+
                        ;; 绘制 post-axis #1/#2，C/O-post 时延伸轴线并绘制截面矩形
                        (setvar "CLAYER" "AXIS")
                        (cond
                          ((= *global_elev_type* 1)  ;; C-post: 上延 175, 下延 7500
-                          (setq post1_top_y  (+ U1_rot_y 175.0)
+                          (setq post1_x     U1_rot_x
+                                post2_x     U2_rot_x
+                                post1_top_y  (+ U1_rot_y 175.0)
                                 post1_bot_y  (- lower_top_axis_y 7500.0)
                                 post2_top_y  (+ U2_rot_y 175.0)
                                 post2_bot_y  (- lower_top_axis_y 7500.0)
                                 post_half_w1 (* *global_post_w* 2.5)
                                 post_half_w2 (* (- *global_post_w* 15.0) 2.5))
                          )
-                         ((= *global_elev_type* 2)  ;; O-post: 仅上延 175
-                          (setq post1_top_y  (+ U1_rot_y 175.0)
+                         ((= *global_elev_type* 2)  ;; O-post: 立柱顶端至 Triangle-Connector 插入点，轴线平移至连接块底点
+                          (setq post1_x     opost_post_x1
+                                post2_x     opost_post_x2
+                                post1_top_y  opost_tri_top_y1
                                 post1_bot_y  lower_top_axis_y
-                                post2_top_y  (+ U2_rot_y 175.0)
+                                post2_top_y  opost_tri_top_y2
                                 post2_bot_y  lower_top_axis_y
                                 post_half_w1 (* *global_post_d* 2.5)
                                 post_half_w2 (* (- *global_post_d* 5.0) 2.5))
                          )
                          (t  ;; fallback
-                          (setq post1_top_y U1_rot_y  post1_bot_y lower_top_axis_y
+                          (setq post1_x     U1_rot_x
+                                post2_x     U2_rot_x
+                                post1_top_y U1_rot_y  post1_bot_y lower_top_axis_y
                                 post2_top_y U2_rot_y  post2_bot_y lower_top_axis_y)
                          )
                        )
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
-                                      (cons 10 (list U1_rot_x post1_top_y 0.0))
-                                      (cons 11 (list U1_rot_x post1_bot_y 0.0))))
+                                      (cons 10 (list post1_x post1_top_y 0.0))
+                                      (cons 11 (list post1_x post1_bot_y 0.0))))
                        (setq *elev_post_ents* (cons (entlast) *elev_post_ents*))
                        (entmake (list '(0 . "LINE") '(8 . "AXIS")
-                                      (cons 10 (list U2_rot_x post2_top_y 0.0))
-                                      (cons 11 (list U2_rot_x post2_bot_y 0.0))))
+                                      (cons 10 (list post2_x post2_top_y 0.0))
+                                      (cons 11 (list post2_x post2_bot_y 0.0))))
                        (setq *elev_post_ents* (cons (entlast) *elev_post_ents*))
-                       ;; C-post / O-post: 每根立柱各画两个居中截面矩形
-                       (if (or (= *global_elev_type* 1) (= *global_elev_type* 2))
+                       ;; C-post only: 每根立柱各画两个居中截面矩形
+                       (if (= *global_elev_type* 1)
                          (progn
                            (setvar "CLAYER" "beam")
                            ;; U1 outer rect
@@ -1030,23 +1054,31 @@
                         (setq block_name "Nut")
                         (if (tblsearch "BLOCK" block_name)
                           (progn
-                            ;; 在 beam-angle-axis 与 post-axis #1 的交点插入块 (U1_rot)，缩放 5 倍
-                            (entmake (list '(0 . "INSERT")
-                                           (cons 2 block_name)
-                                           '(8 . "AXIS")
-                                           (cons 10 (list U1_rot_x U1_rot_y 0.0))
-                                           '(41 . 5.0) '(42 . 5.0) '(43 . 5.0) '(50 . 0.0)))
-                            (PVRect_SetBlockVisibility (entlast) "M14")
-                            (ssadd (entlast) ss_pv)
+                            ;; 在 beam-angle-axis 与 post-axis #1 的交点插入块 (U1_rot)，O-post 不插入
+                            (if (not (= *global_elev_type* 2))
+                              (progn
+                                (entmake (list '(0 . "INSERT")
+                                               (cons 2 block_name)
+                                               '(8 . "AXIS")
+                                               (cons 10 (list U1_rot_x U1_rot_y 0.0))
+                                               '(41 . 5.0) '(42 . 5.0) '(43 . 5.0) '(50 . 0.0)))
+                                (PVRect_SetBlockVisibility (entlast) "M14")
+                                (ssadd (entlast) ss_pv)
+                              )
+                            )
 
-                            ;; 在 beam-angle-axis 与 post-axis #2 的交点插入块 (U2_rot)，缩放 5 倍
-                            (entmake (list '(0 . "INSERT")
-                                           (cons 2 block_name)
-                                           '(8 . "AXIS")
-                                           (cons 10 (list U2_rot_x U2_rot_y 0.0))
-                                           '(41 . 5.0) '(42 . 5.0) '(43 . 5.0) '(50 . 0.0)))
-                            (PVRect_SetBlockVisibility (entlast) "M14")
-                            (ssadd (entlast) ss_pv)
+                            ;; 在 beam-angle-axis 与 post-axis #2 的交点插入块 (U2_rot)，O-post 不插入
+                            (if (not (= *global_elev_type* 2))
+                              (progn
+                                (entmake (list '(0 . "INSERT")
+                                               (cons 2 block_name)
+                                               '(8 . "AXIS")
+                                               (cons 10 (list U2_rot_x U2_rot_y 0.0))
+                                               '(41 . 5.0) '(42 . 5.0) '(43 . 5.0) '(50 . 0.0)))
+                                (PVRect_SetBlockVisibility (entlast) "M14")
+                                (ssadd (entlast) ss_pv)
+                              )
+                            )
 
                             ;; 在 beam-angle-axis 与 brace-axis #1 的交点插入块 (brace_int1)，缩放 5 倍
                             (entmake (list '(0 . "INSERT")
@@ -1078,7 +1110,7 @@
                         ;; 起点：post-axis #1（左侧竖向立柱轴线 U1）最低点向上 1000mm
                         ;; 终点：beam-angle-axis 最左端点沿 angle 方向，长度 (总长-3000)/2 的位置（已计算的交点）
                         (setvar "CLAYER" "AXIS")
-                        (setq line_start_x U1_rot_x
+                        (setq line_start_x (if (= *global_elev_type* 2) opost_post_x1 U1_rot_x)
                               line_start_y (+ lower_top_axis_y 1000.0))  ;; 向上 1000mm（实际长度）
                         ;; 终点坐标使用前面计算的 brace_int1
                         (setq line_end_x brace_int1_x  line_end_y brace_int1_y)
@@ -1088,6 +1120,7 @@
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list (+ line_start_x (* 95.0 5.0)) line_start_y 0.0))
                                            (cons 11 (list line_end_x line_end_y 0.0))))
+                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list line_start_x line_start_y 0.0))
                                            (cons 11 (list line_end_x line_end_y 0.0))))
@@ -1099,13 +1132,14 @@
                                            (cons 10 (list line_start_x line_start_y 0.0))
                                            (cons 11 (list line_end_x line_end_y 0.0))))
                             (setq *elev_brace_ents* (cons (entlast) *elev_brace_ents*))
+                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
                           )
                         )
 
                         ;; brace-axis #2: 创建右侧连接直线（AXIS 图层）
                         ;; 起点：post-axis #2（右侧竖向立柱轴线 U2）最低点向上 1000mm
                         ;; 终点：beam-angle-axis 最右端点反向沿 angle 方向，长度 (总长-3000)/2 的位置（已计算的交点）
-                        (setq line_start_r_x U2_rot_x
+                        (setq line_start_r_x (if (= *global_elev_type* 2) opost_post_x2 U2_rot_x)
                               line_start_r_y (+ lower_top_axis_y 1000.0))  ;; 向上 1000mm（实际长度）
                         ;; 终点坐标使用前面计算的 brace_int2
                         (setq line_end_r_x brace_int2_x  line_end_r_y brace_int2_y)
@@ -1115,6 +1149,7 @@
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list (- line_start_r_x (* 95.0 5.0)) line_start_r_y 0.0))
                                            (cons 11 (list line_end_r_x line_end_r_y 0.0))))
+                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list line_start_r_x line_start_r_y 0.0))
                                            (cons 11 (list line_end_r_x line_end_r_y 0.0))))
@@ -1126,6 +1161,7 @@
                                            (cons 10 (list line_start_r_x line_start_r_y 0.0))
                                            (cons 11 (list line_end_r_x line_end_r_y 0.0))))
                             (setq *elev_brace_ents* (cons (entlast) *elev_brace_ents*))
+                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
                           )
                         )
 
@@ -1148,6 +1184,38 @@
                                 (prompt (strcat "\n>>> Inserted '" brace_conn_block "' at both post/brace intersections."))
                               )
                               (prompt (strcat "\n>>> Warning: Block '" brace_conn_block "' not found. Skipping."))
+                            )
+                          )
+                        )
+                        ;; Triangle-Connector blocks for O-post
+                        (if (= *global_elev_type* 2)
+                          (progn
+                            (setq tri_conn_block
+                              (cond
+                                ((and (>= *global_post_d* 60.0) (<= *global_post_d* 76.0)) "Triangle-Connector-60~76")
+                                ((and (>  *global_post_d* 76.0) (<= *global_post_d* 89.0)) "Triangle-Connector-76~89")
+                                (t nil)
+                              )
+                            )
+                            (if tri_conn_block
+                              (if (tblsearch "BLOCK" tri_conn_block)
+                                (progn
+                                  (entmake (list '(0 . "INSERT")
+                                                 (cons 2 tri_conn_block)
+                                                 '(8 . "DIM")
+                                                 (cons 10 (list (+ U1_rot_x (* dim_nx opost_tri_dist_cad)) opost_tri_top_y1 0.0))
+                                                 '(41 . 1.0) '(42 . 1.0) '(43 . 1.0)
+                                                 (cons 50 ang_rad)))
+                                  (entmake (list '(0 . "INSERT")
+                                                 (cons 2 tri_conn_block)
+                                                 '(8 . "DIM")
+                                                 (cons 10 (list (+ U2_rot_x (* dim_nx opost_tri_dist_cad)) opost_tri_top_y2 0.0))
+                                                 '(41 . 1.0) '(42 . 1.0) '(43 . 1.0)
+                                                 (cons 50 ang_rad)))
+                                  (prompt (strcat "\n>>> Inserted '" tri_conn_block "' at U1 and U2 post/beam intersections."))
+                                )
+                                (prompt (strcat "\n>>> Warning: Block '" tri_conn_block "' not found. Skipping."))
+                              )
                             )
                           )
                         )
@@ -1416,8 +1484,18 @@
           ;; Extend/clip post-axis copies to exact beam-angle-axis intersection + ground
           (if (and post_copy_list lower_top_axis_y U1_rot_y U2_rot_y)
             (progn
-              (setq U1_top_clamp  (+ lower_top_axis_y (* (- U1_rot_y lower_top_axis_y) 0.2))
-                    U2_top_clamp  (+ lower_top_axis_y (* (- U2_rot_y lower_top_axis_y) 0.2))
+              ;; For O-post the post has shifted X; find beam Y at new post X via slope
+              (setq beam_dy_per_dx (if (not (= U2_rot_x U1_rot_x))
+                                     (/ (- U2_rot_y U1_rot_y) (- U2_rot_x U1_rot_x))
+                                     0.0)
+                    U1_clamp_y    (if (= *global_elev_type* 2)
+                                    (+ U1_rot_y (* beam_dy_per_dx (- opost_post_x1 U1_rot_x)))
+                                    U1_rot_y)
+                    U2_clamp_y    (if (= *global_elev_type* 2)
+                                    (+ U2_rot_y (* beam_dy_per_dx (- opost_post_x2 U2_rot_x)))
+                                    U2_rot_y)
+                    U1_top_clamp  (+ lower_top_axis_y (* (- U1_clamp_y lower_top_axis_y) 0.2))
+                    U2_top_clamp  (+ lower_top_axis_y (* (- U2_clamp_y lower_top_axis_y) 0.2))
                     post_bot_clamp lower_top_axis_y
                     sorted_posts  (vl-sort post_copy_list
                                     '(lambda (a b)
@@ -1473,8 +1551,210 @@
     )
   )
 
+  ;; Extend visible brace-axis lines both ends by 30mm (150 CAD units)
+  (if (and *brace_vis_ents* (= *global_elev_type* 1))
+    (progn
+      (setq brace_ext_cad (* 30.0 5.0))
+      (foreach en *brace_vis_ents*
+        (if (and en (entget en))
+          (progn
+            (setq edata (entget en)
+                  pt10  (cdr (assoc 10 edata))
+                  pt11  (cdr (assoc 11 edata))
+                  brace_dx  (- (car pt11) (car pt10))
+                  brace_dy  (- (cadr pt11) (cadr pt10))
+                  brace_len (sqrt (+ (* brace_dx brace_dx) (* brace_dy brace_dy))))
+            (if (> brace_len 0.0)
+              (progn
+                (setq brace_nx (/ brace_dx brace_len)
+                      brace_ny (/ brace_dy brace_len))
+                (setq edata (entget en))
+                (entmod (subst (cons 10 (list (- (car pt10) (* brace_nx brace_ext_cad))
+                                              (- (cadr pt10) (* brace_ny brace_ext_cad))
+                                              (caddr pt10)))
+                               (assoc 10 edata) edata))
+                (setq edata (entget en))
+                (entmod (subst (cons 11 (list (+ (car pt11) (* brace_nx brace_ext_cad))
+                                              (+ (cadr pt11) (* brace_ny brace_ext_cad))
+                                              (caddr pt11)))
+                               (assoc 11 edata) edata))
+              )
+            )
+          )
+        )
+      )
+      (prompt "\n>>> Brace-axis lines extended 35mm at both ends.")
+    )
+  )
+
+  ;; Draw brace-section rectangles (outer 50mm, inner 30mm wide) centered on each brace-axis line
+  (if (and *brace_vis_ents* (= *global_elev_type* 1))
+    (progn
+      (setq brace_hw1 (* 25.0 5.0)
+            brace_hw2 (* 15.0 5.0))
+      (setvar "CLAYER" "beam")
+      (foreach en *brace_vis_ents*
+        (if (and en (entget en))
+          (progn
+            (setq edata     (entget en)
+                  pt10      (cdr (assoc 10 edata))
+                  pt11      (cdr (assoc 11 edata))
+                  brace_dx  (- (car pt11) (car pt10))
+                  brace_dy  (- (cadr pt11) (cadr pt10))
+                  brace_len (sqrt (+ (* brace_dx brace_dx) (* brace_dy brace_dy))))
+            (if (> brace_len 0.0)
+              (progn
+                (setq brace_nx    (/ brace_dx brace_len)
+                      brace_ny    (/ brace_dy brace_len)
+                      brace_mid_x (/ (+ (car pt10) (car pt11)) 2.0)
+                      brace_mid_y (/ (+ (cadr pt10) (cadr pt11)) 2.0)
+                      brace_hl    (/ brace_len 2.0)
+                      brace_perp_x (- brace_ny)
+                      brace_perp_y brace_nx)
+                ;; Outer rect: width 50mm
+                (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                               '(8 . "beam") '(90 . 4) '(70 . 1)
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x brace_hw1))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y brace_hw1)))
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x (- brace_hw1)))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y (- brace_hw1))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x (- brace_hw1)))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y (- brace_hw1))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x brace_hw1))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y brace_hw1)))))
+                ;; Inner rect: width 30mm
+                (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                               '(8 . "beam") '(90 . 4) '(70 . 1)
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x brace_hw2))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y brace_hw2)))
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x (- brace_hw2)))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y (- brace_hw2))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x (- brace_hw2)))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y (- brace_hw2))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x brace_hw2))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y brace_hw2)))))
+              )
+            )
+          )
+        )
+      )
+      (prompt "\n>>> Brace-section rectangles drawn (50mm outer, 30mm inner).")
+    )
+  )
+
+  ;; Label brace-axis length with TSSD_20_100, 185mm below the axis line
+  (if (and *brace_vis_ents* (= *global_elev_type* 1))
+    (progn
+      (setvar "CLAYER" "DIM")
+      (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
+      (foreach en *brace_vis_ents*
+        (if (and en (entget en))
+          (progn
+            (setq edata     (entget en)
+                  pt10      (cdr (assoc 10 edata))
+                  pt11      (cdr (assoc 11 edata))
+                  brace_dx  (- (car pt11) (car pt10))
+                  brace_dy  (- (cadr pt11) (cadr pt10))
+                  brace_len (sqrt (+ (* brace_dx brace_dx) (* brace_dy brace_dy))))
+            (if (> brace_len 0.0)
+              (progn
+                (setq brace_nx    (/ brace_dx brace_len)
+                      brace_ny    (/ brace_dy brace_len)
+                      brace_mid_x (/ (+ (car pt10) (car pt11)) 2.0)
+                      brace_mid_y (/ (+ (cadr pt10) (cadr pt11)) 2.0))
+                ;; Perpendicular toward negative Y (below the brace line in the drawing)
+                (if (>= brace_nx 0.0)
+                  (setq dim_perp_x brace_ny  dim_perp_y (- brace_nx))
+                  (setq dim_perp_x (- brace_ny) dim_perp_y brace_nx)
+                )
+                (setq brace_dim_x (+ brace_mid_x (* dim_perp_x (* 185.0 5.0)))
+                      brace_dim_y (+ brace_mid_y (* dim_perp_y (* 185.0 5.0))))
+                (command "_.DIMALIGNED"
+                         "_NON" (list (car pt10) (cadr pt10) 0.0)
+                         "_NON" (list (car pt11) (cadr pt11) 0.0)
+                         "_NON" (list brace_dim_x brace_dim_y 0.0))
+              )
+            )
+          )
+        )
+      )
+      (prompt "\n>>> Brace-axis length labels added (TSSD_20_100, 185mm below).")
+    )
+  )
+
+  ;; Label post-axis length with TSSD_20_100, 185mm outside the drawing
+  (if (and *elev_post_ents* (= *global_elev_type* 1))
+    (progn
+      (setvar "CLAYER" "DIM")
+      (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
+      (setq sorted_posts (vl-sort *elev_post_ents*
+                            '(lambda (a b)
+                               (< (car (cdr (assoc 10 (entget a))))
+                                  (car (cdr (assoc 10 (entget b)))))))
+            i 0)
+      (foreach en sorted_posts
+        (if (and en (entget en))
+          (progn
+            (setq edata      (entget en)
+                  pt10       (cdr (assoc 10 edata))
+                  pt11       (cdr (assoc 11 edata))
+                  post_mid_y (/ (+ (cadr pt10) (cadr pt11)) 2.0))
+            (if (= i 0)
+              (setq post_dim_x (- (car pt10) (* 185.0 5.0)))
+              (setq post_dim_x (+ (car pt10) (* 185.0 5.0)))
+            )
+            (command "_.DIMALIGNED"
+                     "_NON" (list (car pt10) (cadr pt10) 0.0)
+                     "_NON" (list (car pt11) (cadr pt11) 0.0)
+                     "_NON" (list post_dim_x post_mid_y 0.0))
+            (setq i (1+ i))
+          )
+        )
+      )
+      (prompt "\n>>> Post-axis length labels added (TSSD_20_100, 185mm outside).")
+    )
+  )
+
+  ;; Label post-axis length BELOW the DIM horizontal line, 185mm inside the drawing
+  (if (and *elev_post_ents* lower_top_axis_y (= *global_elev_type* 1))
+    (progn
+      (setvar "CLAYER" "DIM")
+      (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
+      (setq sorted_posts (vl-sort *elev_post_ents*
+                            '(lambda (a b)
+                               (< (car (cdr (assoc 10 (entget a))))
+                                  (car (cdr (assoc 10 (entget b)))))))
+            i 0)
+      (foreach en sorted_posts
+        (if (and en (entget en))
+          (progn
+            (setq edata     (entget en)
+                  pt10      (cdr (assoc 10 edata))
+                  post_bot_clamp (if (= i 0) post1_bot_y post2_bot_y))
+            ;; Only label when the post extends below the DIM horizontal line
+            (if (< post_bot_clamp lower_top_axis_y)
+              (progn
+                (setq post_mid_y (/ (+ lower_top_axis_y post_bot_clamp) 2.0))
+                (if (= i 0)
+                  (setq post_dim_x (+ (car pt10) (* 185.0 5.0)))
+                  (setq post_dim_x (- (car pt10) (* 185.0 5.0)))
+                )
+                (command "_.DIMALIGNED"
+                         "_NON" (list (car pt10) lower_top_axis_y 0.0)
+                         "_NON" (list (car pt10) post_bot_clamp 0.0)
+                         "_NON" (list post_dim_x post_mid_y 0.0))
+              )
+            )
+            (setq i (1+ i))
+          )
+        )
+      )
+      (prompt "\n>>> Post-axis below-DIM length labels added (TSSD_20_100, 185mm inside).")
+    )
+  )
+
   ;; 清理全局变量（在复制轴线之后执行）
-  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil)
+  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil)
 
   (if *old_osmode_global* (progn (setvar "OSMODE" *old_osmode_global*) (setq *old_osmode_global* nil)))
   (if *old_layer_global* (progn (setvar "CLAYER" *old_layer_global*) (setq *old_layer_global* nil)))
