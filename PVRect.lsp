@@ -869,12 +869,12 @@
                          ((= *global_elev_type* 2)  ;; O-post: 立柱顶端至 Triangle-Connector 插入点，轴线平移至连接块底点
                           (setq post1_x     opost_post_x1
                                 post2_x     opost_post_x2
-                                post1_top_y  opost_tri_top_y1
+                                post1_top_y  (+ opost_tri_top_y1 175.0)
                                 post1_bot_y  lower_top_axis_y
-                                post2_top_y  opost_tri_top_y2
+                                post2_top_y  (+ opost_tri_top_y2 175.0)
                                 post2_bot_y  lower_top_axis_y
                                 post_half_w1 (* *global_post_d* 2.5)
-                                post_half_w2 (* (- *global_post_d* 5.0) 2.5))
+                                post_half_w2 (* (- *global_post_d* 6.0) 2.5))
                          )
                          (t  ;; fallback
                           (setq post1_x     U1_rot_x
@@ -926,13 +926,48 @@
                            (setvar "CLAYER" "AXIS")
                          )
                        )
+                       ;; O-post only: 每根立柱各画两个居中截面矩形（宽 D 和 D-6）
+                       (if (= *global_elev_type* 2)
+                         (progn
+                           (setvar "CLAYER" "beam")
+                           ;; post1 outer rect (width = D)
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(62 . 4) '(90 . 4) '(70 . 1)
+                                          (list 10 (- post1_x post_half_w1) post1_top_y)
+                                          (list 10 (+ post1_x post_half_w1) post1_top_y)
+                                          (list 10 (+ post1_x post_half_w1) post1_bot_y)
+                                          (list 10 (- post1_x post_half_w1) post1_bot_y)))
+                           ;; post1 inner rect (width = D-6)
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(62 . 4) '(90 . 4) '(70 . 1)
+                                          (list 10 (- post1_x post_half_w2) post1_top_y)
+                                          (list 10 (+ post1_x post_half_w2) post1_top_y)
+                                          (list 10 (+ post1_x post_half_w2) post1_bot_y)
+                                          (list 10 (- post1_x post_half_w2) post1_bot_y)))
+                           ;; post2 outer rect (width = D)
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(62 . 4) '(90 . 4) '(70 . 1)
+                                          (list 10 (- post2_x post_half_w1) post2_top_y)
+                                          (list 10 (+ post2_x post_half_w1) post2_top_y)
+                                          (list 10 (+ post2_x post_half_w1) post2_bot_y)
+                                          (list 10 (- post2_x post_half_w1) post2_bot_y)))
+                           ;; post2 inner rect (width = D-6)
+                           (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                          '(8 . "beam") '(62 . 4) '(90 . 4) '(70 . 1)
+                                          (list 10 (- post2_x post_half_w2) post2_top_y)
+                                          (list 10 (+ post2_x post_half_w2) post2_top_y)
+                                          (list 10 (+ post2_x post_half_w2) post2_bot_y)
+                                          (list 10 (- post2_x post_half_w2) post2_bot_y)))
+                           (setvar "CLAYER" "AXIS")
+                         )
+                       )
 
                        ;; 保存左侧post-axis的最低点作为缩放中心
                        (setq *scale_center_x* U1_rot_x
                              *scale_center_y* lower_top_axis_y)
                                       
                        (setvar "CLAYER" "DIM")
-                       (command "_.DIMLINEAR" "_NON" (list U1_rot_x lower_top_axis_y 0.0) "_NON" (list U2_rot_x lower_top_axis_y 0.0) "_NON" (list (/ (+ U1_rot_x U2_rot_x) 2.0) (- lower_top_axis_y 2000.0) 0.0))
+                       (command "_.DIMLINEAR" "_NON" (list post1_x lower_top_axis_y 0.0) "_NON" (list post2_x lower_top_axis_y 0.0) "_NON" (list (/ (+ post1_x post2_x) 2.0) (- lower_top_axis_y 2000.0) 0.0))
 
                         ;; =============================================================================
                         ;; beam-angle-axis: 斜向角度轴线（沿 angle 方向的轴线）
@@ -1111,7 +1146,7 @@
                         ;; 终点：beam-angle-axis 最左端点沿 angle 方向，长度 (总长-3000)/2 的位置（已计算的交点）
                         (setvar "CLAYER" "AXIS")
                         (setq line_start_x (if (= *global_elev_type* 2) opost_post_x1 U1_rot_x)
-                              line_start_y (+ lower_top_axis_y 1000.0))  ;; 向上 1000mm（实际长度）
+                              line_start_y (if (= *global_elev_type* 2) (+ lower_top_axis_y 1500.0) (+ lower_top_axis_y 1000.0)))
                         ;; 终点坐标使用前面计算的 brace_int1
                         (setq line_end_x brace_int1_x  line_end_y brace_int1_y)
                         ;; 创建直线
@@ -1140,7 +1175,7 @@
                         ;; 起点：post-axis #2（右侧竖向立柱轴线 U2）最低点向上 1000mm
                         ;; 终点：beam-angle-axis 最右端点反向沿 angle 方向，长度 (总长-3000)/2 的位置（已计算的交点）
                         (setq line_start_r_x (if (= *global_elev_type* 2) opost_post_x2 U2_rot_x)
-                              line_start_r_y (+ lower_top_axis_y 1000.0))  ;; 向上 1000mm（实际长度）
+                              line_start_r_y (if (= *global_elev_type* 2) (+ lower_top_axis_y 1500.0) (+ lower_top_axis_y 1000.0)))
                         ;; 终点坐标使用前面计算的 brace_int2
                         (setq line_end_r_x brace_int2_x  line_end_r_y brace_int2_y)
                         ;; 创建直线
@@ -1184,6 +1219,36 @@
                                 (prompt (strcat "\n>>> Inserted '" brace_conn_block "' at both post/brace intersections."))
                               )
                               (prompt (strcat "\n>>> Warning: Block '" brace_conn_block "' not found. Skipping."))
+                            )
+                          )
+                        )
+                        ;; O-brace-connector blocks for O-post at post-axis/brace-axis intersections
+                        (if (= *global_elev_type* 2)
+                          (progn
+                            (setq obrace_conn_block
+                              (cond
+                                ((or (= *global_post_d* 60.0) (= *global_post_d* 63.0)) "o-brace-connector-2")
+                                ((= *global_post_d* 76.0) "o-brace-connector-5")
+                                ((= *global_post_d* 89.0) "o-brace-connector-8")
+                                (t nil)))
+                            (if (and obrace_conn_block (tblsearch "BLOCK" obrace_conn_block))
+                              (progn
+                                (entmake (list '(0 . "INSERT")
+                                               (cons 2 obrace_conn_block)
+                                               '(8 . "AXIS")
+                                               (cons 10 (list line_start_x line_start_y 0.0))
+                                               '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                                (entmake (list '(0 . "INSERT")
+                                               (cons 2 obrace_conn_block)
+                                               '(8 . "AXIS")
+                                               (cons 10 (list line_start_r_x line_start_r_y 0.0))
+                                               '(41 . -1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                                (prompt (strcat "\n>>> Inserted '" obrace_conn_block "' at both post/brace intersections."))
+                              )
+                              (if obrace_conn_block
+                                (prompt (strcat "\n>>> Warning: Block '" obrace_conn_block "' not found. Skipping."))
+                                (prompt "\n>>> Warning: Post diameter not matched for o-brace-connector. Skipping.")
+                              )
                             )
                           )
                         )
