@@ -1707,6 +1707,61 @@
     )
   )
 
+  ;; O-post: brace-section rectangles (outer 50mm, inner 30mm) centered on each brace-axis line
+  (if (and *brace_vis_ents* (= *global_elev_type* 2))
+    (progn
+      (setq brace_hw1 (* 25.0 5.0)
+            brace_hw2 (* 15.0 5.0))
+      (setvar "CLAYER" "beam")
+      (foreach en *brace_vis_ents*
+        (if (and en (entget en))
+          (progn
+            (setq edata     (entget en)
+                  pt10      (cdr (assoc 10 edata))
+                  pt11      (cdr (assoc 11 edata))
+                  brace_dx  (- (car pt11) (car pt10))
+                  brace_dy  (- (cadr pt11) (cadr pt10))
+                  brace_len (sqrt (+ (* brace_dx brace_dx) (* brace_dy brace_dy))))
+            (if (> brace_len 0.0)
+              (progn
+                (setq brace_nx    (/ brace_dx brace_len)
+                      brace_ny    (/ brace_dy brace_len)
+                      brace_mid_x (/ (+ (car pt10) (car pt11)) 2.0)
+                      brace_mid_y (/ (+ (cadr pt10) (cadr pt11)) 2.0)
+                      brace_hl    (/ brace_len 2.0)
+                      brace_perp_x (- brace_ny)
+                      brace_perp_y brace_nx)
+                ;; Outer rect: width 50mm
+                (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                               '(8 . "beam") '(90 . 4) '(70 . 1)
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x brace_hw1))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y brace_hw1)))
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x (- brace_hw1)))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y (- brace_hw1))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x (- brace_hw1)))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y (- brace_hw1))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x brace_hw1))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y brace_hw1)))))
+                ;; Inner rect: width 30mm
+                (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                               '(8 . "beam") '(90 . 4) '(70 . 1)
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x brace_hw2))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y brace_hw2)))
+                               (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x (- brace_hw2)))
+                                        (+ brace_mid_y (* brace_ny brace_hl) (* brace_perp_y (- brace_hw2))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x (- brace_hw2)))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y (- brace_hw2))))
+                               (list 10 (+ brace_mid_x (* brace_nx (- brace_hl)) (* brace_perp_x brace_hw2))
+                                        (+ brace_mid_y (* brace_ny (- brace_hl)) (* brace_perp_y brace_hw2)))))
+              )
+            )
+          )
+        )
+      )
+      (prompt "\n>>> O-post brace-section rectangles drawn (50mm outer, 30mm inner).")
+    )
+  )
+
   ;; Label brace-axis length with TSSD_20_100, 185mm below the axis line
   (if (and *brace_vis_ents* (= *global_elev_type* 1))
     (progn
