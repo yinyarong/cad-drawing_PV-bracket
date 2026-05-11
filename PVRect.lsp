@@ -539,7 +539,10 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del)
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent)
+  ;; For C/O-post: capture last entity before PostFix draws anything.
+  ;; This boundary covers the main array AND any ZHWBZH-generated entities.
+  (setq postfix_start_ent (if (not (= *global_elev_type* 0)) (entlast) nil))
   (if (and *last_ent_before_macro* (= *global_elev_type* 0))
     (progn
       (setq e_cur *last_ent_before_macro*)
@@ -589,25 +592,6 @@
       )
     )
   )
-  (if (and *first_ent_global* *last_ent_before_macro*
-           (not (equal *first_ent_global* *last_ent_before_macro*))
-           (not (= *global_elev_type* 0)))
-    (progn
-      (setq ss_del (ssadd)
-            e_del (entnext *first_ent_global*))
-      (while e_del
-        (ssadd e_del ss_del)
-        (if (equal e_del *last_ent_before_macro*)
-          (setq e_del nil)
-          (setq e_del (entnext e_del))
-        )
-      )
-      (if (> (sslength ss_del) 0)
-        (command "_.ERASE" ss_del "")
-      )
-    )
-  )
-  (setq *last_ent_before_macro* nil)
   (command "_.-LAYER" "_ON" "purlin,beam" "")
   (if *global_h*
     (progn
@@ -1216,12 +1200,32 @@
       )
     )
   )
+  ;; For C/O-post: erase everything drawn before PostFix (main array + ZHWBZH entities).
+  ;; postfix_start_ent was captured at the very start of this function as the boundary.
+  (if (and postfix_start_ent *first_ent_global*
+           (not (equal *first_ent_global* postfix_start_ent)))
+    (progn
+      (setq ss_del (ssadd)
+            e_del (entnext *first_ent_global*))
+      (while e_del
+        (ssadd e_del ss_del)
+        (if (equal e_del postfix_start_ent)
+          (setq e_del nil)
+          (setq e_del (entnext e_del))
+        )
+      )
+      (if (> (sslength ss_del) 0)
+        (command "_.ERASE" ss_del "")
+      )
+    )
+  )
+  (setq *last_ent_before_macro* nil)
   ;; =============================================================================
   ;; Entity-tracked axis copy: scale 1/5, assign target layers by type.
   ;; Uses entities recorded during elevation drawing — no length heuristics.
   ;; Cross AXIS line (*elev_cross_ent*) is excluded (it is not a structural member).
   ;; =============================================================================
-  (if (and *global_new_line_x1* *scale_center_x* *scale_center_y*)
+  (if (and *global_new_line_x1* *scale_center_x* *scale_center_y* (= *global_elev_type* 0))
     (progn
       (setq axis_copy_dist 25000.0
             scale_center   (list *scale_center_x* *scale_center_y* 0.0)
@@ -1472,7 +1476,7 @@
               (if (not (tblsearch "LAYER" "PV")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "PV") (70 . 0) (62 . 7))))
               (if (not (tblsearch "LAYER" "STPM_SBEAM_THICK")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "STPM_SBEAM_THICK") (70 . 0) (62 . 7))))
               
-              (setq SF 2.0 h_eval (* h SF) w_eval (* w SF) hole_eval (* hole SF) zd_eval (* zd SF) zde_eval (* zde SF) gap (* 20.0 SF) extX (* 75.0 SF) axis_gap (/ hole_eval 2.0) purlin_half_h (* (/ purlin_H 2.0) SF) beam_half_w (* 25.0 SF) beam_shrink (* 350.0 SF))
+              (setq SF 2.0 h_eval (* h SF) w_eval (* w SF) hole_eval (* hole SF) zd_eval (* zd SF) zde_eval (* zde SF) gap (* 20.0 SF) extX (* 75.0 SF) axis_gap (/ hole_eval 2.0) purlin_half_h 50.0 beam_half_w (* 25.0 SF) beam_shrink (* 350.0 SF))
               
               (setq old_layer (getvar "CLAYER") old_osmode (getvar "OSMODE"))
               (setvar "OSMODE" 0)
