@@ -660,7 +660,7 @@
                          ss_pv (ssadd)
                          min_axis_x nil
                          max_axis_x nil)
-                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil)
+                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil *opost_brace_src_ents* nil)
                    (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
                    (while (< pi_idx *global_n*)
                      (setq cur_pv_x (+ pv_start_x (* pi_idx (* (+ *global_h* 20.0) 5.0)))
@@ -1145,6 +1145,13 @@
                         ;; 起点：post-axis #1（左侧竖向立柱轴线 U1）最低点向上 1000mm
                         ;; 终点：beam-angle-axis 最左端点沿 angle 方向，长度 (总长-3000)/2 的位置（已计算的交点）
                         (setvar "CLAYER" "AXIS")
+                        ;; O-post: bolt offset along brace direction (mm × 5 CAD)
+                        (setq obolt_offset_cad
+                          (cond
+                            ((or (= *global_post_d* 60.0) (= *global_post_d* 63.0)) 600.0)
+                            ((= *global_post_d* 76.0) 625.0)
+                            ((= *global_post_d* 89.0) 675.0)
+                            (t 600.0)))
                         (setq line_start_x (if (= *global_elev_type* 2) opost_post_x1 U1_rot_x)
                               line_start_y (if (= *global_elev_type* 2) (+ lower_top_axis_y 1500.0) (+ lower_top_axis_y 1000.0)))
                         ;; 终点坐标使用前面计算的 brace_int1
@@ -1163,11 +1170,17 @@
                             (setq *brace_track_ents* (cons (entlast) *brace_track_ents*))
                           )
                           (progn
+                            ;; O-post brace #1: vis line with lower endpoint shifted horizontally inward (+X)
+                            (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                                           (cons 10 (list (+ line_start_x obolt_offset_cad) line_start_y 0.0))
+                                           (cons 11 (list line_end_x line_end_y 0.0))))
+                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
+                            ;; scale-copy source: original unshifted lower endpoint (erased after copy)
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list line_start_x line_start_y 0.0))
                                            (cons 11 (list line_end_x line_end_y 0.0))))
                             (setq *elev_brace_ents* (cons (entlast) *elev_brace_ents*))
-                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
+                            (setq *opost_brace_src_ents* (cons (entlast) *opost_brace_src_ents*))
                           )
                         )
 
@@ -1192,11 +1205,17 @@
                             (setq *brace_track_ents* (cons (entlast) *brace_track_ents*))
                           )
                           (progn
+                            ;; O-post brace #2: vis line with lower endpoint shifted horizontally inward (-X)
+                            (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                                           (cons 10 (list (- line_start_r_x obolt_offset_cad) line_start_r_y 0.0))
+                                           (cons 11 (list line_end_r_x line_end_r_y 0.0))))
+                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
+                            ;; scale-copy source: original unshifted lower endpoint (erased after copy)
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list line_start_r_x line_start_r_y 0.0))
                                            (cons 11 (list line_end_r_x line_end_r_y 0.0))))
                             (setq *elev_brace_ents* (cons (entlast) *elev_brace_ents*))
-                            (setq *brace_vis_ents* (cons (entlast) *brace_vis_ents*))
+                            (setq *opost_brace_src_ents* (cons (entlast) *opost_brace_src_ents*))
                           )
                         )
 
@@ -1616,6 +1635,17 @@
     )
   )
 
+  ;; Erase O-post unshifted brace-axis source lines (kept only for scale-copy, now redundant)
+  (if *opost_brace_src_ents*
+    (progn
+      (setq ss_obs (ssadd))
+      (foreach en *opost_brace_src_ents*
+        (if (and en (entget en)) (ssadd en ss_obs)))
+      (if (> (sslength ss_obs) 0)
+        (command "_.ERASE" ss_obs ""))
+    )
+  )
+
   ;; Extend visible brace-axis lines both ends by 30mm (150 CAD units)
   (if (and *brace_vis_ents* (= *global_elev_type* 1))
     (progn
@@ -1704,6 +1734,42 @@
         )
       )
       (prompt "\n>>> Brace-section rectangles drawn (50mm outer, 30mm inner).")
+    )
+  )
+
+  ;; O-post: extend visible brace-axis lines both ends by 30mm (150 CAD units)
+  (if (and *brace_vis_ents* (= *global_elev_type* 2))
+    (progn
+      (setq brace_ext_cad (* 30.0 5.0))
+      (foreach en *brace_vis_ents*
+        (if (and en (entget en))
+          (progn
+            (setq edata (entget en)
+                  pt10  (cdr (assoc 10 edata))
+                  pt11  (cdr (assoc 11 edata))
+                  brace_dx  (- (car pt11) (car pt10))
+                  brace_dy  (- (cadr pt11) (cadr pt10))
+                  brace_len (sqrt (+ (* brace_dx brace_dx) (* brace_dy brace_dy))))
+            (if (> brace_len 0.0)
+              (progn
+                (setq brace_nx (/ brace_dx brace_len)
+                      brace_ny (/ brace_dy brace_len))
+                (setq edata (entget en))
+                (entmod (subst (cons 10 (list (- (car pt10) (* brace_nx brace_ext_cad))
+                                              (- (cadr pt10) (* brace_ny brace_ext_cad))
+                                              (caddr pt10)))
+                               (assoc 10 edata) edata))
+                (setq edata (entget en))
+                (entmod (subst (cons 11 (list (+ (car pt11) (* brace_nx brace_ext_cad))
+                                              (+ (cadr pt11) (* brace_ny brace_ext_cad))
+                                              (caddr pt11)))
+                               (assoc 11 edata) edata))
+              )
+            )
+          )
+        )
+      )
+      (prompt "\n>>> O-post brace-axis lines extended 30mm at both ends.")
     )
   )
 
@@ -1873,8 +1939,78 @@
     )
   )
 
+  ;; O-post: label brace-axis length, 185mm below the axis line
+  (if (and *brace_vis_ents* (= *global_elev_type* 2))
+    (progn
+      (setvar "CLAYER" "DIM")
+      (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
+      (foreach en *brace_vis_ents*
+        (if (and en (entget en))
+          (progn
+            (setq edata     (entget en)
+                  pt10      (cdr (assoc 10 edata))
+                  pt11      (cdr (assoc 11 edata))
+                  brace_dx  (- (car pt11) (car pt10))
+                  brace_dy  (- (cadr pt11) (cadr pt10))
+                  brace_len (sqrt (+ (* brace_dx brace_dx) (* brace_dy brace_dy))))
+            (if (> brace_len 0.0)
+              (progn
+                (setq brace_nx    (/ brace_dx brace_len)
+                      brace_ny    (/ brace_dy brace_len)
+                      brace_mid_x (/ (+ (car pt10) (car pt11)) 2.0)
+                      brace_mid_y (/ (+ (cadr pt10) (cadr pt11)) 2.0))
+                (if (>= brace_nx 0.0)
+                  (setq dim_perp_x brace_ny  dim_perp_y (- brace_nx))
+                  (setq dim_perp_x (- brace_ny) dim_perp_y brace_nx))
+                (setq brace_dim_x (+ brace_mid_x (* dim_perp_x (* 185.0 5.0)))
+                      brace_dim_y (+ brace_mid_y (* dim_perp_y (* 185.0 5.0))))
+                (command "_.DIMALIGNED"
+                         "_NON" (list (car pt10) (cadr pt10) 0.0)
+                         "_NON" (list (car pt11) (cadr pt11) 0.0)
+                         "_NON" (list brace_dim_x brace_dim_y 0.0))
+              )
+            )
+          )
+        )
+      )
+      (prompt "\n>>> O-post brace-axis length labels added (TSSD_20_100, 185mm below).")
+    )
+  )
+
+  ;; O-post: label post-axis length, 185mm outside the drawing
+  (if (and *elev_post_ents* (= *global_elev_type* 2))
+    (progn
+      (setvar "CLAYER" "DIM")
+      (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
+      (setq sorted_posts (vl-sort *elev_post_ents*
+                            '(lambda (a b)
+                               (< (car (cdr (assoc 10 (entget a))))
+                                  (car (cdr (assoc 10 (entget b)))))))
+            i 0)
+      (foreach en sorted_posts
+        (if (and en (entget en))
+          (progn
+            (setq edata      (entget en)
+                  pt10       (cdr (assoc 10 edata))
+                  pt11       (cdr (assoc 11 edata))
+                  post_mid_y (/ (+ (cadr pt10) (cadr pt11)) 2.0))
+            (if (= i 0)
+              (setq post_dim_x (- (car pt10) (* 185.0 5.0)))
+              (setq post_dim_x (+ (car pt10) (* 185.0 5.0))))
+            (command "_.DIMALIGNED"
+                     "_NON" (list (car pt10) (cadr pt10) 0.0)
+                     "_NON" (list (car pt11) (cadr pt11) 0.0)
+                     "_NON" (list post_dim_x post_mid_y 0.0))
+            (setq i (1+ i))
+          )
+        )
+      )
+      (prompt "\n>>> O-post post-axis length labels added (TSSD_20_100, 185mm outside).")
+    )
+  )
+
   ;; 清理全局变量（在复制轴线之后执行）
-  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil)
+  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil *opost_brace_src_ents* nil)
 
   (if *old_osmode_global* (progn (setvar "OSMODE" *old_osmode_global*) (setq *old_osmode_global* nil)))
   (if *old_layer_global* (progn (setvar "CLAYER" *old_layer_global*) (setq *old_layer_global* nil)))
