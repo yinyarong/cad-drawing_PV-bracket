@@ -660,7 +660,7 @@
                          ss_pv (ssadd)
                          min_axis_x nil
                          max_axis_x nil)
-                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil *opost_brace_src_ents* nil)
+                   (setq *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil *opost_brace_src_ents* nil *opost_screw_pile_bot_y* nil)
                    (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
                    (while (< pi_idx *global_n*)
                      (setq cur_pv_x (+ pv_start_x (* pi_idx (* (+ *global_h* 20.0) 5.0)))
@@ -1303,6 +1303,41 @@
                             )
                           )
                         )
+                        ;; Screw pile blocks for O-post at the bottom of each post-axis
+                        (if (= *global_elev_type* 2)
+                          (progn
+                            (setq screw_pile_block
+                              (cond
+                                ((or (= *global_post_d* 60.0) (= *global_post_d* 63.0)) "screw pile-76")
+                                ((= *global_post_d* 76.0) "screw pile-89")
+                                ((= *global_post_d* 89.0) "screw pile-102")
+                                (t nil)))
+                            (if screw_pile_block
+                              (if (tblsearch "BLOCK" screw_pile_block)
+                                (progn
+                                  (entmake (list '(0 . "INSERT")
+                                                 (cons 2 screw_pile_block)
+                                                 '(8 . "AXIS")
+                                                 (cons 10 (list opost_post_x1 lower_top_axis_y 0.0))
+                                                 '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                                  (entmake (list '(0 . "INSERT")
+                                                 (cons 2 screw_pile_block)
+                                                 '(8 . "AXIS")
+                                                 (cons 10 (list opost_post_x2 lower_top_axis_y 0.0))
+                                                 '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                                  ;; capture screw pile block bottom Y for title placement
+                                  (setq sp_vla (vlax-ename->vla-object (entlast)))
+                                  (vla-GetBoundingBox sp_vla 'sp_bbmin 'sp_bbmax)
+                                  (setq *opost_screw_pile_bot_y* (vlax-safearray-get-element sp_bbmin 1))
+                                  (vlax-release-object sp_vla)
+                                  (prompt (strcat "\n>>> Inserted '" screw_pile_block "' at both post-axis bottom points."))
+                                )
+                                (prompt (strcat "\n>>> Warning: Block '" screw_pile_block "' not found. Skipping."))
+                              )
+                              (prompt "\n>>> Warning: Post diameter not matched for screw pile. Skipping.")
+                            )
+                          )
+                        )
                      )
                    )
 
@@ -1312,7 +1347,9 @@
                    
                    ;; 为右侧立面图添加标题、双下划线和比例 1:20
                    (setq elev_center_x   (/ (+ new_line_x1 new_line_x2) 2.0)
-                         elev_title_y    (- post1_bot_y 2000.0)
+                         elev_title_y    (if (and (= *global_elev_type* 2) *opost_screw_pile_bot_y*)
+                                           (- *opost_screw_pile_bot_y* 2000.0)
+                                           (- post1_bot_y 2000.0))
                          elev_t1_str     "PV Mount Structure Elevation layout")
                    (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES")
                                   (cons 10 (list elev_center_x elev_title_y 0))
@@ -2010,7 +2047,7 @@
   )
 
   ;; 清理全局变量（在复制轴线之后执行）
-  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil *opost_brace_src_ents* nil)
+  (setq *global_h* nil *global_hole* nil *global_sf* nil *title_ents_list* nil *left_dims_global* nil *top_dims_global* nil *upper_only_ents* nil *global_axis_y_list* nil *global_startX* nil *global_endX* nil *global_dim_x_vert* nil *global_pt_x* nil *global_w_eval* nil *global_gap* nil *global_start_vx* nil *global_zd_eval* nil *global_dim_y* nil *global_dim_y2* nil *global_top_y* nil *global_axis_y2_baseline* nil *global_vx_list* nil *global_bottom_y* nil *global_bottom_dim_y* nil *global_clearance* nil *global_angle* nil *global_nop* nil *global_elev_type* nil *global_post_w* nil *global_post_d* nil *global_beam_h* nil *global_purlin_H* nil *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *elev_purlin_ents* nil *elev_cross_ent* nil *elev_beam_ent* nil *elev_post_ents* nil *elev_brace_ents* nil *brace_track_ents* nil *brace_vis_ents* nil *opost_brace_src_ents* nil *opost_screw_pile_bot_y* nil)
 
   (if *old_osmode_global* (progn (setvar "OSMODE" *old_osmode_global*) (setq *old_osmode_global* nil)))
   (if *old_layer_global* (progn (setvar "CLAYER" *old_layer_global*) (setq *old_layer_global* nil)))
