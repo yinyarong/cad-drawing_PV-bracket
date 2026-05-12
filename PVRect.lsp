@@ -1338,20 +1338,24 @@
                             )
                           )
                         )
-                        ;; O-post: angle label between beam-axis and DIM horizontal line
-                        (if (= *global_elev_type* 2)
+                        ;; C/O-post: angle label between beam-axis and DIM horizontal line
+                        (if (or (= *global_elev_type* 1) (= *global_elev_type* 2))
                           (progn
                             (setvar "CLAYER" "DIM")
                             ;; Vertex at intersection of beam-axis (extended) with DIM horizontal (lower_top_axis_y)
                             (setq opost_ang_t     (/ (- lower_top_axis_y ax_L_ry) (sin ang_rad))
                                   opost_ang_vx    (+ ax_L_rx (* opost_ang_t (cos ang_rad)))
-                                  opost_ang_arc_x (+ new_line_x1 500.0)
-                                  opost_ang_arc_y (+ lower_top_axis_y (* 0.5 (- (+ new_line_x1 500.0) opost_ang_vx) (/ (sin ang_rad) (cos ang_rad)))))
+                                  opost_ang_arc_x (+ new_line_x1 1700.0)
+                                  opost_ang_arc_y (+ lower_top_axis_y (* (- (+ new_line_x1 1700.0) opost_ang_vx) (/ (sin (/ ang_rad 2.0)) (cos (/ ang_rad 2.0)))))
+                                  ang_align_x     (if (= *global_elev_type* 2) opost_post_x1 U1_rot_x))
                             (command "_.DIMANGULAR" ""
                                      "_NON" (list opost_ang_vx lower_top_axis_y 0.0)
-                                     "_NON" (list (+ opost_ang_vx (* 4000.0 (cos ang_rad))) (+ lower_top_axis_y (* 4000.0 (sin ang_rad))) 0.0)
                                      "_NON" (list (+ opost_ang_vx 4000.0) lower_top_axis_y 0.0)
+                                     "_NON" (list (+ opost_ang_vx (* 4000.0 (cos ang_rad))) (+ lower_top_axis_y (* 4000.0 (sin ang_rad))) 0.0)
                                      "_NON" (list opost_ang_arc_x opost_ang_arc_y 0.0))
+                            (command "XCHQQ"
+                                     (list opost_ang_arc_x opost_ang_arc_y 0.0)
+                                     "_NON" (list ang_align_x lower_top_axis_y 0.0))
                           )
                         )
                      )
