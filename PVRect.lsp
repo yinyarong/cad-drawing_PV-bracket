@@ -98,8 +98,7 @@
                        (or (= (strcase prop_name) "VISIBILITY")
                            (= (strcase prop_name) "VISIBLE")
                            (= (strcase prop_name) "VISIBILITY1")
-                           (vl-string-search "VISIB" (strcase prop_name))
-                           (vl-string-search "可见性" prop_name)))
+                           (vl-string-search "VISIB" (strcase prop_name))))
                 (progn
                   (prompt (strcat "\n>>> Found visibility property: " prop_name))
                   ;; 尝试获取允许值列表
@@ -540,7 +539,7 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot)
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block)
   ;; For C/O-post: capture last entity before PostFix draws anything.
   ;; This boundary covers the main array AND any ZHWBZH-generated entities.
   (setq postfix_start_ent (if (not (= *global_elev_type* 0)) (entlast) nil))
@@ -1861,8 +1860,8 @@
                 (setq k (1+ k))
               )
               (prompt (strcat "\n>>> Purlin: " (itoa (sslength ss_new_purlin)) " lines copied ("
-                              (itoa split_idx) "→01Purlin-02, "
-                              (itoa (- (sslength ss_new_purlin) split_idx)) "→01Purlin-01)."))
+                              (itoa split_idx) "->01Purlin-02, "
+                              (itoa (- (sslength ss_new_purlin) split_idx)) "->01Purlin-01)."))
             )
           )
         )
@@ -1883,7 +1882,7 @@
             (ssadd en_new ss_scaled_all)
             (setq en_new (entnext en_new))
           )
-          (prompt "\n>>> Beam-angle-axis copied → 02Beam.")
+          (prompt "\n>>> Beam-angle-axis copied -> 02Beam.")
         )
         (prompt "\n>>> No beam-angle-axis tracked, skipping 02Beam copy.")
       )
@@ -1908,7 +1907,7 @@
                 (setq post_copy_list (cons en_new post_copy_list))
                 (setq en_new (entnext en_new))
               )
-              (prompt (strcat "\n>>> Post-axis: " (itoa (sslength ss_post)) " lines copied → 04Column."))
+              (prompt (strcat "\n>>> Post-axis: " (itoa (sslength ss_post)) " lines copied -> 04Column."))
             )
           )
         )
@@ -1949,7 +1948,7 @@
                 (ssadd en_new ss_scaled_all)
                 (setq en_new (entnext en_new))
               )
-              (prompt (strcat "\n>>> Brace-axis: " (itoa (sslength ss_brace)) " lines copied → 03Brace."))
+              (prompt (strcat "\n>>> Brace-axis: " (itoa (sslength ss_brace)) " lines copied -> 03Brace."))
               ;; C-post-single: restore brace-copy to original — un-extend both ends + center lower x
               (if (= *global_elev_type* 3)
                 (progn
@@ -2463,7 +2462,7 @@
 ;; 3. Main Entry Command
 ;; =============================================================================
 
-(defun c:PVRect ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str post_w_str post_d_str beam_h_str purlin_H_str dialog_done elev_type post_w post_d beam_h w h n m hole zn zd zde clearance angle nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list)
+(defun c:PVRect ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str post_w_str post_d_str beam_h_str purlin_H_str dialog_done elev_type post_w post_d beam_h purlin_H w h n m hole zn zd zde clearance angle nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list)
   (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" elev_str "0" post_w_str "80" post_d_str "60" beam_h_str "100" purlin_H_str "80" dialog_done nil)
   
   (while (not dialog_done)
