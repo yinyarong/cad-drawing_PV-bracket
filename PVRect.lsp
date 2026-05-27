@@ -539,57 +539,30 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block)
+(defun PVRect_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block ax_line_len ax_r ax_cy ax_th ax_dim_y ax_n ax_vx_prev ax_vx_next)
   ;; For C/O-post: capture last entity before PostFix draws anything.
   ;; This boundary covers the main array AND any ZHWBZH-generated entities.
   (setq postfix_start_ent (if (not (= *global_elev_type* 0)) (entlast) nil))
-  (if (and *last_ent_before_macro* (= *global_elev_type* 0))
+  ;; Create upper "Module layout" title (axis bubbles/dims handled by c:ZHWBZH before PostFix)
+  (if (and (= *global_elev_type* 0) *global_n* *global_m* *global_center_x*)
     (progn
-      (setq e_cur *last_ent_before_macro*)
-      (setq ss (ssadd))
-      (while (setq e_cur (entnext e_cur)) (ssadd e_cur ss))
-      (if (> (sslength ss) 0)
-        (progn
-          (command "_.MATCHPROP" *last_ent_before_macro* ss "")
-          (command "_.MOVE" ss "" "_NON" '(0.0 0.0 0.0) "_NON" '(0.0 1500.0 0.0))
-          (setq global_min_y 1e99 idx 0)
-          (while (< idx (sslength ss))
-            (setq ent (ssname ss idx))
-            (setq err (vl-catch-all-apply 'vla-getboundingbox (list (vlax-ename->vla-object ent) 'minpt 'maxpt)))
-            (if (not (vl-catch-all-error-p err))
-              (progn
-                (setq pt_min (vlax-safearray->list minpt))
-                (if (< (cadr pt_min) global_min_y) (setq global_min_y (cadr pt_min)))
-              )
-            )
-            (setq idx (1+ idx))
-          )
-          ;; Use *global_bottom_dim_y* as the reliable title anchor (set in main command).
-          ;; After the MOVE +1500, the drawing bottom is at (*global_bottom_dim_y* + 1500),
-          ;; so placing title at *global_bottom_dim_y* puts it exactly 1500 below the moved bottom.
-          (if (and *global_n* *global_m* *global_center_x*)
-            (progn
-              (if (not (tblsearch "STYLE" "TIMES")) (entmake '((0 . "STYLE") (100 . "AcDbSymbolTableRecord") (100 . "AcDbTextStyleTableRecord") (2 . "TIMES") (70 . 0) (40 . 0.0) (41 . 1.0) (3 . "times.ttf"))))
-              (if (not (tblsearch "LAYER" "NUM")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "NUM") (70 . 0) (62 . 7))))
-              (setq title_y (if *global_bottom_y*
-                               (- *global_bottom_y* (* 2500.0 (if *global_sf* *global_sf* 2.0)))
-                               (if *global_bottom_dim_y* *global_bottom_dim_y* (- *global_axis_y2_baseline* 6500.0))))
-              (setq t1_str (strcat (itoa *global_n*) "x" (itoa *global_m*) " Module layout"))
-              (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list *global_center_x* title_y 0)) (cons 40 550.0) (cons 1 t1_str) '(72 . 1) (cons 11 (list *global_center_x* title_y 0))))
-              (setq e_t1 (entlast) *title_ents_list* (list e_t1))
-              (setq tb (textbox (entget e_t1)) t1_width (- (caadr tb) (caar tb)) t1_minX (- *global_center_x* (/ t1_width 2.0)) t1_maxX (+ *global_center_x* (/ t1_width 2.0)))
-              (setq gap_ext 300.0 line_x1 (- t1_minX gap_ext) line_x2 (+ t1_maxX gap_ext) line_top_y (- title_y 250.0) line_bot_y (- line_top_y 150.0))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
-              (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
-              (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
-              (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
-              (setq t2_x (+ line_x2 400.0))
-              (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list t2_x title_y 0)) (cons 40 400.0) (cons 1 "1:50") '(72 . 0) (cons 11 (list t2_x title_y 0))))
-              (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
-            )
-          )
-        )
-      )
+      (if (not (tblsearch "STYLE" "TIMES")) (entmake '((0 . "STYLE") (100 . "AcDbSymbolTableRecord") (100 . "AcDbTextStyleTableRecord") (2 . "TIMES") (70 . 0) (40 . 0.0) (41 . 1.0) (3 . "times.ttf"))))
+      (if (not (tblsearch "LAYER" "NUM")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "NUM") (70 . 0) (62 . 7))))
+      (setq title_y (if *global_bottom_y*
+                         (- *global_bottom_y* (* 3200.0 (if *global_sf* *global_sf* 2.0)))
+                         (if *global_bottom_dim_y* *global_bottom_dim_y* (- *global_axis_y2_baseline* 6500.0))))
+      (setq t1_str (strcat (itoa *global_n*) "x" (itoa *global_m*) " Module layout"))
+      (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list *global_center_x* title_y 0)) (cons 40 550.0) (cons 1 t1_str) '(72 . 1) (cons 11 (list *global_center_x* title_y 0))))
+      (setq e_t1 (entlast) *title_ents_list* (list e_t1))
+      (setq tb (textbox (entget e_t1)) t1_width (- (caadr tb) (caar tb)) t1_minX (- *global_center_x* (/ t1_width 2.0)) t1_maxX (+ *global_center_x* (/ t1_width 2.0)))
+      (setq gap_ext 300.0 line_x1 (- t1_minX gap_ext) line_x2 (+ t1_maxX gap_ext) line_top_y (- title_y 250.0) line_bot_y (- line_top_y 150.0))
+      (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) (cons 43 50.0) (list 10 line_x1 line_top_y) (list 10 line_x2 line_top_y)))
+      (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
+      (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline") '(8 . "DIM") '(90 . 2) '(43 . 0.0)  (list 10 line_x1 line_bot_y) (list 10 line_x2 line_bot_y)))
+      (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
+      (setq t2_x (+ line_x2 400.0))
+      (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES") (cons 10 (list t2_x title_y 0)) (cons 40 400.0) (cons 1 "1:50") '(72 . 0) (cons 11 (list t2_x title_y 0))))
+      (setq *title_ents_list* (append *title_ents_list* (list (entlast))))
     )
   )
   (command "_.-LAYER" "_ON" "purlin,beam" "")
@@ -1104,20 +1077,8 @@
                                            (list 10 (+ cps_post_x cps_hw_new) (- cps_brace_bot_y cps_hy_new))
                                            (list 10 (+ cps_post_x cps_hw_new) (+ cps_brace_bot_y cps_hy_new))
                                            (list 10 (- cps_post_x cps_hw_new) (+ cps_brace_bot_y cps_hy_new))))
-                            (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
-                                           '(8 . "beam") '(62 . 2) '(90 . 4) '(70 . 1)
-                                           (list 10 (- cps_post_x cps_hw_new) (- cps_brace_bot_y cps_hy_new))
-                                           (list 10 (+ cps_post_x cps_hw_new) (- cps_brace_bot_y cps_hy_new))
-                                           (list 10 (+ cps_post_x cps_hw_new) (+ cps_brace_bot_y cps_hy_new))
-                                           (list 10 (- cps_post_x cps_hw_new) (+ cps_brace_bot_y cps_hy_new))))
                             ;; inner rectangles: x = 2*(W/2+60+30), y = 100-6, same center
                             (setq cps_hy_new2 235.0)
-                            (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
-                                           '(8 . "beam") '(62 . 2) '(90 . 4) '(70 . 1)
-                                           (list 10 (- cps_post_x cps_hw_new) (- cps_brace_bot_y cps_hy_new2))
-                                           (list 10 (+ cps_post_x cps_hw_new) (- cps_brace_bot_y cps_hy_new2))
-                                           (list 10 (+ cps_post_x cps_hw_new) (+ cps_brace_bot_y cps_hy_new2))
-                                           (list 10 (- cps_post_x cps_hw_new) (+ cps_brace_bot_y cps_hy_new2))))
                             (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                                            '(8 . "beam") '(62 . 2) '(90 . 4) '(70 . 1)
                                            (list 10 (- cps_post_x cps_hw_new) (- cps_brace_bot_y cps_hy_new2))
@@ -2459,7 +2420,81 @@
 )
 
 ;; =============================================================================
-;; 3. Main Entry Command
+;; 3. Post-Process Command (axis bubbles + inter-axis dims, then PostFix)
+;; =============================================================================
+
+(defun c:ZHWBZH ( / ax_r ax_cy ax_th ax_dim_y ax_total_y ax_n ax_vx_prev ax_vx_next)
+  (if (and (= *global_elev_type* 0) *global_vx_list* *global_bottom_y* *global_sf*)
+    (progn
+      ;; Layout (top→bottom): plan bottom → per-axis dims → total dim → circles → title
+      (setq ax_r       (* 300.0 *global_sf*)
+            ax_dim_y   (- *global_bottom_y* (* 700.0 *global_sf*))
+            ax_total_y (- *global_bottom_y* (* 1400.0 *global_sf*))
+            ax_cy      (- *global_bottom_y* (* 2180.0 *global_sf*))
+            ax_th      (* 0.85 ax_r)
+            ax_n       1)
+      (if (not (tblsearch "LAYER" "AXIS")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "AXIS") (70 . 0) (62 . 1))))
+      (if (not (tblsearch "LAYER" "NUM"))  (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "NUM")  (70 . 0) (62 . 7))))
+      (if (not (tblsearch "STYLE" "TIMES")) (entmake '((0 . "STYLE") (100 . "AcDbSymbolTableRecord") (100 . "AcDbTextStyleTableRecord") (2 . "TIMES") (70 . 0) (40 . 0.0) (41 . 1.0) (3 . "times.ttf"))))
+      (foreach vx *global_vx_list*
+        ;; White approach line: plan bottom to circle top
+        (entmake (list '(0 . "LINE") '(8 . "AXIS") '(62 . 7)
+                       (cons 10 (list vx *global_bottom_y* 0.0))
+                       (cons 11 (list vx (+ ax_cy ax_r) 0.0))))
+        (entmake (list '(0 . "CIRCLE") '(8 . "NUM")
+                       (cons 10 (list vx ax_cy 0.0))
+                       (cons 40 ax_r)))
+        (entmake (list '(0 . "TEXT") '(8 . "NUM") '(7 . "TIMES")
+                       (cons 10 (list vx ax_cy 0.0))
+                       (cons 40 ax_th)
+                       (cons 1 (itoa ax_n))
+                       '(72 . 1) '(73 . 2)
+                       (cons 11 (list vx ax_cy 0.0))))
+        (setq ax_n (1+ ax_n))
+      )
+      (if (not (tblsearch "LAYER" "DIM")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "DIM") (70 . 0) (62 . 7))))
+      (command "_.-LAYER" "_ON" "DIM" "")
+      (setvar "CLAYER" "DIM")
+      (if (tblsearch "DIMSTYLE" "TSSD_50_100") (command "-DIMSTYLE" "_R" "TSSD_50_100"))
+      ;; Left edge dim: array start to first axis
+      (if (and *global_startX* (car *global_vx_list*))
+        (command "_.DIMLINEAR"
+                 "_NON" (list *global_startX* *global_bottom_y* 0.0)
+                 "_NON" (list (car *global_vx_list*) *global_bottom_y* 0.0)
+                 "_NON" (list (/ (+ *global_startX* (car *global_vx_list*)) 2.0) ax_dim_y 0.0))
+      )
+      ;; Inter-axis dims
+      (setq ax_vx_prev (car *global_vx_list*))
+      (foreach ax_vx_next (cdr *global_vx_list*)
+        (command "_.DIMLINEAR"
+                 "_NON" (list ax_vx_prev *global_bottom_y* 0.0)
+                 "_NON" (list ax_vx_next *global_bottom_y* 0.0)
+                 "_NON" (list (/ (+ ax_vx_prev ax_vx_next) 2.0) ax_dim_y 0.0))
+        (setq ax_vx_prev ax_vx_next)
+      )
+      ;; Right edge dim: last axis to array end
+      (if (and *global_endX* (last *global_vx_list*))
+        (command "_.DIMLINEAR"
+                 "_NON" (list (last *global_vx_list*) *global_bottom_y* 0.0)
+                 "_NON" (list *global_endX* *global_bottom_y* 0.0)
+                 "_NON" (list (/ (+ (last *global_vx_list*) *global_endX*) 2.0) ax_dim_y 0.0))
+      )
+      ;; Total span dim: leftmost to rightmost axis, one row below per-axis dims
+      (if (and (car *global_vx_list*) (last *global_vx_list*)
+               (not (equal (car *global_vx_list*) (last *global_vx_list*))))
+        (command "_.DIMLINEAR"
+                 "_NON" (list (car *global_vx_list*) *global_bottom_y* 0.0)
+                 "_NON" (list (last *global_vx_list*) *global_bottom_y* 0.0)
+                 "_NON" (list (/ (+ (car *global_vx_list*) (last *global_vx_list*)) 2.0) ax_total_y 0.0))
+      )
+    )
+  )
+  (PVRect_PostFix)
+  (princ)
+)
+
+;; =============================================================================
+;; 4. Main Entry Command
 ;; =============================================================================
 
 (defun c:PVRect ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str post_w_str post_d_str beam_h_str purlin_H_str dialog_done elev_type post_w post_d beam_h purlin_H w h n m hole zn zd zde clearance angle nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list)
@@ -2806,7 +2841,7 @@
                   (command "_.-LAYER" "_OFF" "purlin,beam,PV,DIM" "")
                   (setq *last_ent_before_macro* (entlast) *global_n* n *global_m* m *global_zn* zn *global_center_x* center_x *global_axis_y2_baseline* axis_y2 *global_h* h *global_hole* hole *global_sf* SF *global_startX* startX *global_endX* endX *global_dim_x_vert* dim_x_vert *global_pt_x* (car pt) *global_w_eval* w_eval *global_gap* gap *global_start_vx* start_vx *global_zd_eval* zd_eval *global_dim_y* dim_y *global_dim_y2* dim_y2 *global_top_y* top_y *global_vx_list* vx_list *global_bottom_y* bottom_y *global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *global_clearance* clearance *global_angle* angle *global_nop* nop *global_elev_type* elev_type *global_post_w* post_w *global_post_d* post_d *global_beam_h* beam_h *global_purlin_H* purlin_H *global_new_line_x1* nil *scale_center_x* nil *scale_center_y* nil *old_osmode_global* old_osmode *old_layer_global* old_layer)
                   (command "_.ZOOM" "_E")
-                  (setq cmd_str "(PVRect_PostFix)\n")
+                  (setq cmd_str "ZHWBZH\n")
                   (vla-SendCommand (vla-get-ActiveDocument (vlax-get-acad-object)) cmd_str)
                 )
               )
