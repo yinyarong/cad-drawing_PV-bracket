@@ -509,11 +509,11 @@
 ;; =============================================================================
 ;; 2. Post-processing (Stable logic from v33/v34)
 
-;; 根据 purlin_H (mm) 找最近的 Purlin-Bracket-XX 块（XX 为 5mm 步进，范围 60~95）
+;; 根据 purlin_H (mm) 找最近的 Purlin-Bracket-XX 块（XX 为 5mm 步进，最小 60）
 ;; 返回块名字符串，若范围内无任何块则返回 nil
 ;; 从 h_round 开始向外扩展搜索，每次 ±5mm，先查低侧再查高侧
 (defun PVRect_FindPurlinBlock (purlin_H / h_round step found_name)
-  (setq h_round (max 60 (min 95 (* 5 (fix (/ (+ purlin_H 2.5) 5.0)))))
+  (setq h_round (max 60 (* 5 (fix (/ (+ purlin_H 2.5) 5.0))))
         found_name nil
         step 0)
   (while (and (null found_name) (<= step 35))
@@ -524,7 +524,6 @@
     )
     ;; 再尝试 h_round+step（step>0 时才有意义）
     (if (and (null found_name) (> step 0)
-             (<= (+ h_round step) 95)
              (tblsearch "BLOCK" (strcat "Purlin-Bracket-" (itoa (+ h_round step)))))
       (setq found_name (strcat "Purlin-Bracket-" (itoa (+ h_round step))))
     )
@@ -2572,7 +2571,7 @@
 
   (if (= res 1)
     (progn
-      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle (atof angle_str) nop (atoi nop_str) elev_type (atoi elev_str) post_w (atof post_w_str) post_d (atof post_d_str) beam_h (max 50.0 (if (> (atof beam_h_str) 0) (atof beam_h_str) 100.0)) purlin_H (max 60.0 (min 95.0 (if (> (atof purlin_H_str) 0) (atof purlin_H_str) 80.0))))
+      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle (atof angle_str) nop (atoi nop_str) elev_type (atoi elev_str) post_w (atof post_w_str) post_d (atof post_d_str) beam_h (max 50.0 (if (> (atof beam_h_str) 0) (atof beam_h_str) 100.0)) purlin_H (max 60.0 (if (> (atof purlin_H_str) 0) (atof purlin_H_str) 80.0)))
       (if (and (> h 0) (> w 0) (> n 0) (> m 0) (> hole 0))
         (progn
           (setq pt (getpoint "\nSelect insertion point: "))
