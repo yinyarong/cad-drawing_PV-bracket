@@ -1927,11 +1927,7 @@
                   )
                   (if brace_all_info
                     (progn
-                      (setq cps_copy_cx 0.0)
-                      (foreach blp brace_all_info
-                        (setq cps_copy_cx (+ cps_copy_cx (car (nth 4 blp))))
-                      )
-                      (setq cps_copy_cx (/ cps_copy_cx (float (length brace_all_info))))
+                      (setq cps_copy_cx (+ cps_post_x axis_copy_dist))
                       (foreach blp brace_all_info
                         (setq en       (car blp)
                               top_code (cadr blp)
@@ -2429,8 +2425,8 @@
       ;; Layout (top→bottom): plan bottom → per-axis dims → total dim → circles → title
       (setq ax_r       (* 300.0 *global_sf*)
             ax_dim_y   (- *global_bottom_y* (* 700.0 *global_sf*))
-            ax_total_y (- *global_bottom_y* (* 1400.0 *global_sf*))
-            ax_cy      (- *global_bottom_y* (* 2180.0 *global_sf*))
+            ax_total_y (- *global_bottom_y* (* 1150.0 *global_sf*))
+            ax_cy      (- *global_bottom_y* (* 1820.0 *global_sf*))
             ax_th      (* 0.85 ax_r)
             ax_n       1)
       (if (not (tblsearch "LAYER" "AXIS")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "AXIS") (70 . 0) (62 . 1))))
