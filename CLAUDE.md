@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 脚本 | 命令 | 功能 |
 |------|------|------|
-| `PVRect.lsp` | `PVRect` | 光伏支架阵列布局自动生成（完整工程图纸） |
+| `PVRect_Singsun.lsp` | `PVRect_Singsun` | 光伏支架阵列布局自动生成（完整工程图纸） |
 | `YYR.lsp` | `YYR` | 轻量绘图工具：Brace 支撑架、C-Post 柱截面、Label 标注、Shorten 缩短 |
 | `Mymodel.lsp` | `MyModel` | 3D 旋转 + Excel 读取 + 行复制 + 导出 DXF 的自动建模脚本 |
 
@@ -18,36 +18,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 APPLOAD → 选择文件 → 加载
-(load "PVRect.lsp")   ; 或 YYR.lsp / Mymodel.lsp
+(load "PVRect_Singsun.lsp")   ; 或 YYR.lsp / Mymodel.lsp
 ```
 
 ---
 
-## PVRect.lsp — 光伏支架布局工具
+## PVRect_Singsun.lsp — 光伏支架布局工具
 
 ### 主命令
-- `PVRect` — 启动对话框，生成光伏阵列结构图纸
-- `ZHWBZH` — 后处理命令（由 `PVRect` 通过 SendCommand 异步调用）
+- `PVRect_Singsun` — 启动对话框，生成光伏阵列结构图纸
+- `ZHWBZH_Singsun` — 后处理命令（由 `PVRect_Singsun` 通过 SendCommand 异步调用）
+- 对话框顶部单选 Plan view / Elevation view / MyModel：MyModel 由对话框参数（w、m、zn、zd、zd-e、E-W Slope）直接三维建模并导出 DXF（`PVRectSgs_MyModel`），不读 Excel
 
-### 代码架构（约 2779 行）
+### 代码架构（约 3300 行；下列行号范围为原版，仅供参考）
 
 1. **工具函数 + Excel 数据导入**（第 1–541 行）
-   - `PVRect_ReadExcelDefaults`（第 262 行）— 从当前目录 Excel 文件读取参数；自动识别 Eurocode（含 "V1.2"/"EN1990"）或 ASCE 模板
-   - `PVRect_ImportExcel`（第 479 行）— 解析导入结果，返回参数字典
-   - 辅助函数：`PVRect_SnapDown`、`PVRect_GetProjectionDist`、`PVRect_SetBlockVisibility`、`PVRect_FarFromPointsP`、`PVRect_UniqueSorted`、`PVRect_BuildPVVerticalXs`、`PVRect_BuildBreakCandidates`、`PVRect_FindBreakPath`、`PVRect_AddSegmentedHorizontalDim`
+   - `PVRectSgs_ReadExcelDefaults` — 从当前目录 Excel 文件读取参数；自动识别 Eurocode（含 "V1.2"/"EN1990"）或 ASCE 模板
+   - `PVRectSgs_ImportExcel` — 解析导入结果，返回参数字典
+   - 辅助函数：`PVRectSgs_SnapDown`、`PVRectSgs_GetProjectionDist`、`PVRectSgs_SetBlockVisibility`、`PVRectSgs_FarFromPointsP`、`PVRectSgs_UniqueSorted`、`PVRectSgs_BuildPVVerticalXs`、`PVRectSgs_BuildBreakCandidates`、`PVRectSgs_FindBreakPath`、`PVRectSgs_AddSegmentedHorizontalDim`
 
 2. **立面图绘制与后处理**（第 515–2412 行）
-   - `PVRect_FindPurlinBlock`（第 515 行）— 在块表中查找最近匹配高度的 `Purlin-Bracket-xx` 块
-   - `PVRect_PostFix`（第 542 行）— 生成立面图、分段水平标注、侧视图；根据 `*global_elev_type*` 分支处理各种立面类型（0/1/2/3）
+   - `PVRectSgs_FindPurlinBlock` — 在块表中查找最近匹配高度的 `Purlin-Bracket-xx` 块
+   - `PVRectSgs_PostFix` — 生成立面图、分段水平标注、侧视图；根据 `*sg_global_elev_type*` 分支处理各种立面类型（0/1/2/3）
 
 3. **主入口**（第 2413–2779 行）
-   - `c:PVRect`（第 2416 行）— DCL 对话框、参数验证、平面图形生成；在末尾通过 `setq` 写入全局变量后 `vla-SendCommand` 调用 `ZHWBZH`
+   - `c:PVRect_Singsun` — DCL 对话框、参数验证、平面图形生成；在末尾通过 `setq` 写入全局变量后 `vla-SendCommand` 调用 `ZHWBZH_Singsun`
 
-### 立面图类型（`elev_type` / `*global_elev_type*`）
+### 立面图类型（`elev_type` / `*sg_global_elev_type*`）
 
 | 值 | 对话框选项 | 说明 |
 |----|-----------|------|
-| `0` | No | 仅平面阵列，不生成立面图 |
+| `0` | Plan view | 仅平面阵列，不生成立面图（对话框 Type 列表已去掉 No，改由顶部 Plan / Elevation / MyModel 单选决定） |
 | `1` | C-post-double | 双立柱 C 型钢截面；插入 U 型螺栓块（U1/U2），上延 175、下延 7500 |
 | `2` | O-post | 圆管截面；绘制 Triangle-Connector 块，post-axis 轴线平移至连接块底点 |
 | `3` | C-post-single | 单立柱 C 型钢截面；中心对称的螺旋桩块、两条斜撑轴线，无 U 型螺栓块 |
@@ -81,9 +82,9 @@ APPLOAD → 选择文件 → 加载
 - **beam-angle-axis**：沿 `angle` 方向的斜轴线
 - **brace-axis**：连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 
-### 全局变量（`c:PVRect` 末尾设置，`PVRect_PostFix` 读取）
+### 全局变量（`c:PVRect_Singsun` 末尾设置，`PVRectSgs_PostFix` 读取）
 
-`*global_n*`、`*global_m*`、`*global_sf*`、`*global_h*`、`*global_purlin_H*`、`*global_beam_h*`、`*global_clearance*`、`*global_elev_type*`、`*global_axis_y_list*`、`*global_startX*`、`*global_endX*`、`*global_center_x*`、`*global_dim_x_vert*`、`*global_bottom_y*`、`*global_bottom_dim_y*`、`*global_axis_y2_baseline*`、`*global_new_line_x1*`、`*last_ent_before_macro*`
+`*sg_global_n*`、`*sg_global_m*`、`*sg_global_sf*`、`*sg_global_h*`、`*sg_global_purlin_H*`、`*sg_global_beam_h*`、`*sg_global_clearance*`、`*sg_global_elev_type*`、`*sg_global_axis_y_list*`、`*sg_global_startX*`、`*sg_global_endX*`、`*sg_global_center_x*`、`*sg_global_dim_x_vert*`、`*sg_global_bottom_y*`、`*sg_global_bottom_dim_y*`、`*sg_global_axis_y2_baseline*`、`*sg_global_new_line_x1*`、`*sg_last_ent_before_macro*`
 
 ### 图层系统
 
@@ -156,4 +157,4 @@ TSSD 标注样式需 TSSD 结构 CAD 插件；否则回退到当前样式。操�
 - COM 接口用 Late Binding（`vlax-get-or-create-object`），必须用 `vlax-release-object` 释放
 - 所有坐标用 `_NON` 禁用对象捕捉
 - 后处理通过 `vla-SendCommand` 异步执行，用全局变量传递状态
-- PVRect 全局变量在 `c:PVRect`（第 2416 行）末尾通过 `setq` 写入，在 `PVRect_PostFix`（第 542 行）读取
+- PVRect 全局变量在 `c:PVRect_Singsun` 末尾通过 `setq` 写入，在 `PVRectSgs_PostFix` 读取
