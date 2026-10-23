@@ -82,25 +82,32 @@ Browse to the file, click **Load**.
 | `h` / `w` | PV panel height / width (mm) | 2382 / 1134 |
 | `n` / `m` | Row count / column count | 2 / 12 |
 | `hole` | Hole spacing (mm) | 1400 |
-| `nop` | Purlins per PV panel | 2 |
+| `nop` | Purlins per PV panel (2 or 3) | 2 |
 | `zn` | Number of brackets | 3 |
-| `zd` / `zd-e` | Bracket spacing / edge spacing (mm) | 3800 |
+| `zd` / `zd-e` | Middle-span / end-span bracket spacing (mm) | 3800 / 3800 |
 | `clearance` | Ground clearance below PV panel (mm) | 400 |
 | `angle` | Panel tilt angle (°) | 20 |
-| `purlin_H` | Purlin bracket height in elevation (mm) | 120 |
+| `post_w` / `post_d` | C-post width / O-post diameter (mm, elevation only) | 80 / 60 |
+| `purlin_H` | Purlin bracket height in elevation (mm) | 80 |
 | `beam_H` | Beam section height in elevation (mm) | 100 |
 | E-W Slope | East-west slope for MyModel (°); purlins tilt along their length, along-slope spacing stays `zd` / `zd-e` | 0 |
 
-### Excel template (PVRect_Singsun / Mymodel)
+### Excel files
 
-| Sheet / Cell | Variable | Description |
-|--------------|----------|-------------|
-| `排列计算` C13 | `dist_total` | Total row span distance |
-| `排列计算` C14 | `spacing` | Row-to-row spacing |
-| `排列计算` C15 | `rowCount` | Number of rows to copy |
-| `排列计算` C16 | `dist1` | First purlin offset distance |
+Both scripts look for Excel files in the folder of the current (saved) drawing. When several exist, the most recently modified one is used and `~$` lock files are ignored.
 
-PVRect reads from the first sheet that contains "V1.2" or "EN1990" in any cell for Eurocode mode, otherwise ASCE mode is assumed.
+**PVRect_Singsun — dialog defaults (Import Excel)** are read from the `数据填写` sheet. Eurocode mode is detected from "V1.2" in the file name or "EN1990" in the sheet header; otherwise ASCE mode is assumed.
+
+**Mymodel.lsp (standalone)** reads the `阵列计算` sheet:
+
+| Cell | Variable | Description |
+|------|----------|-------------|
+| C13 | `dist_total` | Purlin length |
+| C14 | `spacing` | Frame-to-frame spacing (uniform) |
+| C15 | `rowCount` | Number of frame copies (rounded to an integer) |
+| C16 | `dist1` | Distance from the original frame to the purlin's +Y end (0 ~ C13) |
+
+MyModel inside `PVRect_Singsun` does not read Excel; see [MyModel from the dialog](#mymodel-from-the-pvrect_singsun-dialog).
 
 ### Layer system (PVRect_Singsun)
 
@@ -114,6 +121,10 @@ PVRect reads from the first sheet that contains "V1.2" or "EN1990" in any cell f
 | `NUM` | White | Numbering text |
 | `LTPJJ` | Yellow | Lower-tier details |
 | `STPM_SBEAM_THICK` | White | Thick beam lines |
+| `01Purlin-01` / `01Purlin-02` | Green | Elevation reduced copy: purlin-bracket axis lines (right half / left half); MyModel builds purlins from them |
+| `02Beam` | Cyan | Elevation reduced copy: beam axis |
+| `03Brace` | Red | Elevation reduced copy: brace axes |
+| `04Column` | White | Elevation reduced copy: post axes |
 
 ## Usage
 
@@ -125,7 +136,26 @@ Command: PVRect_Singsun
 
 The dialog opens. Choose **Plan view**, **Elevation view** or **MyModel** at the top, fill in panel dimensions, layout counts, and structural parameters, then click **OK**. Plan / elevation output calls `ZHWBZH_Singsun` automatically for post-processing; MyModel builds the 3D model in the current drawing and saves a `.dxf`.
 
-Command, function and global names use `_Singsun` / `PVRectSgs_` / `*sg_`, so this file can be loaded alongside other PVRect variants.
+| Output | Result |
+|--------|--------|
+| Plan view | Array layout (panels, purlins, axes, dimensions). Type / Clearance / Beam H / Purlin H / post size are disabled |
+| Elevation view | Side elevation of the selected Type (C-post-double / O-post / C-post-single), plus a reduced copy of the member axes at real (mm) size on layers `01Purlin-01/02`, `02Beam`, `03Brace`, `04Column` |
+| MyModel | 3D analysis model + DXF export, see below |
+
+Command, function and global names use `_Singsun` / `PVRectSgs_` / `*sg_`, so this file can be loaded alongside other PVRect variants. The old `PVRect` command name no longer exists.
+
+#### MyModel from the PVRect_Singsun dialog
+
+Only `w`, `m`, `zn`, `zd`, `zd-e` and **E-W Slope** are used; everything else is disabled. The current drawing must be saved and contain the member axis lines on `01Purlin-01/02`, `02Beam`, `03Brace`, `04Column` (e.g. the reduced copy from Elevation view).
+
+- Purlin length `L = m·w + (m−1)·20 + 2·75`
+- Frame offsets match the plan view: `zn = 1` → one frame; `zn = 2` → one span `zd-e`; `zn ≥ 3` → end spans `zd-e`, middle spans `zd`
+- Frames are centred on the purlin: +Y overhang `= (L − total span) / 2`
+- E-W Slope tilts the purlins along their length; spacings `zd` / `zd-e` are measured along the slope. A positive slope makes frames lower towards −Y
+
+Steps: rotate all model-space objects 90° about X → build full-length purlins from the `01Purlin` reference lines → copy `02Beam` / `03Brace` / `04Column` to every frame → delete layers without curves and PURGE → save `<drawing-name>.dxf` next to the drawing.
+
+> MyModel rotates **everything** in model space and deletes other layers. Run it on a dedicated drawing or a copy. Running it twice on the same drawing asks for confirmation, because it would rotate another 90°.
 
 ### YYR — structural cross-section and label toolkit
 
@@ -140,13 +170,13 @@ Select **Brace**, **C-Post**, or **Label** from the dialog.
 
 ### Mymodel — 3D model assembly and DXF export
 
-Place the target `.dwg` and an Excel file (`.xls` or `.xlsx`) with a `排列计算` sheet in the same directory, then:
+Save the target `.dwg` and place an Excel file (`.xls*`) with a `阵列计算` sheet in the same directory, then:
 
 ```
 Command: MyModel
 ```
 
-The script runs all six steps automatically and saves a `.dxf` file with the same base name as the drawing.
+The script runs all six steps automatically and saves a `.dxf` file with the same base name as the drawing. Frames are copied at a uniform spacing (C14); use the PVRect_Singsun dialog when end spans differ from middle spans or an E-W slope is needed.
 
 ## Examples
 
@@ -156,10 +186,20 @@ Open a blank AutoCAD drawing, load `PVRect_Singsun.lsp`, type `PVRect_Singsun`, 
 
 ```
 h = 2382, w = 1134, n = 2, m = 12, angle = 20, clearance = 400
-zn = 3, zd = 3800, purlin_H = 120, beam_H = 100
+zn = 3, zd = 3800, zd-e = 3800, purlin_H = 80, beam_H = 100
 ```
 
-Result: a fully dimensioned top-view array layout plus an elevation view with beams, purlins, and post cross-sections, all on separate layers.
+- **Plan view** → a fully dimensioned array layout.
+- **Elevation view**, Type = C-post-double → the side elevation with beams, purlin brackets and post cross-sections, plus the reduced member-axis copy.
+
+### Example 1b — 3D model from the dialog
+
+Same drawing after Elevation view (saved), Output = **MyModel**, `w = 1134, m = 12, zn = 4, zd = 4000, zd-e = 3500, E-W Slope = 2`:
+
+- Purlin length = 12 × 1134 + 11 × 20 + 150 = 13978
+- Frame offsets = 3500, 7500, 11000 (spans 3500 / 4000 / 3500)
+- +Y overhang = (13978 − 11000) / 2 = 1489
+- Purlins and frames follow a 2° slope along the purlin; `<drawing-name>.dxf` is written next to the drawing.
 
 ### Example 2 — brace cross-section at 1:50 scale
 
@@ -172,7 +212,7 @@ Both closed polylines are placed on layer `03Brace` (white), centered on the sel
 
 ### Example 3 — batch row copy with Excel parameters
 
-With a `.dwg` open that has structural entities on layers `02Beam`, `03Brace`, `04Column`, and a matching Excel file with `spacing = 5000`, `rowCount = 6` in `排列计算`:
+With a `.dwg` open that has structural entities on layers `02Beam`, `03Brace`, `04Column`, and a matching Excel file with `spacing = 5000`, `rowCount = 6` in `阵列计算`:
 
 ```
 Command: MyModel
@@ -190,6 +230,9 @@ The script copies the bracket row 6 times at −5000 mm intervals along Y, clean
 | `Trusted File Warning` on every load | File not in a trusted path | Run `TRUSTEDPATHS` and add the folder, or use `APPLOAD` and click **Always Load** |
 | Nut blocks not visible | Dynamic block visibility state not set | Ensure the `M14` visibility state exists in the block definition |
 | `MyModel` exits immediately | COM error connecting to Excel | Close other Excel instances, or ensure the `.xls*` file is not open read-only |
+| `Unknown command "PVRECT"` | Command was renamed | Load `PVRect_Singsun.lsp` and type `PVRect_Singsun` |
+| `[MyModel ERR] Drawing is not saved` | MyModel exports the DXF next to the drawing | Save the drawing first |
+| MyModel builds no purlins | No lines on `01Purlin-01` / `01Purlin-02` | Generate the Elevation view first, or draw the reference lines on those layers |
 
 ## Contributing
 
