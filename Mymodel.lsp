@@ -37,7 +37,7 @@
                    old_cmdecho pt0 pt1 targetWbName tempWb wbCount i_wb isOpenedByMe wbOpenedByMe obj newObj moveVec
                    dist1 dist2 dist_total ss_pur en p1 p2 base_pt mSpace j failCount sheetName
                    curLayer dwg_dir excel_files dwg_full dwg_path dxf_name dxf_path acadDoc ans
-                   _collect-curve-layers _erase-entities-on-layer _layer-name-list
+                   _collect-curve-layers _erase-entities-outside _layer-name-list
                    _prepare-layers-for-delete _delete-extra-layers _close-excel _cell-num)
 
   ;; 关闭/释放 Excel：只关闭本脚本打开的工作簿，只退出本脚本启动的 Excel 实例
@@ -102,15 +102,20 @@
     keepLayers
   )
 
-  (defun _erase-entities-on-layer (layName / ss_layer idx removedCount)
+  ;; 删除不在 keepLayers 中的图层上的全部对象（按图层名精确比较，不作通配匹配；外部参照图层除外）
+  (defun _erase-entities-outside (keepLayers / ss_all_e idx en layName removedCount)
     (setq removedCount 0)
-    (if (setq ss_layer (ssget "_X" (list (cons 8 layName))))
+    (if (setq ss_all_e (ssget "_X"))
       (progn
         (setq idx 0)
-        (repeat (sslength ss_layer)
-          (if (not (vl-catch-all-error-p
-                     (vl-catch-all-apply 'vla-delete
-                                         (list (vlax-ename->vla-object (ssname ss_layer idx))))))
+        (repeat (sslength ss_all_e)
+          (setq en (ssname ss_all_e idx)
+                layName (cdr (assoc 8 (entget en))))
+          (if (and (/= (strcase layName) "0")
+                   (not (member (strcase layName) keepLayers))
+                   (not (wcmatch layName "*|*"))
+                   (not (vl-catch-all-error-p
+                          (vl-catch-all-apply 'vla-delete (list (vlax-ename->vla-object en))))))
             (setq removedCount (1+ removedCount))
           )
           (setq idx (1+ idx))
@@ -147,14 +152,7 @@
       (setvar "CLAYER" "0")
     )
 
-    (setq removedCount 0)
-    (foreach layerName (_layer-name-list doc)
-      (if (and (/= (strcase layerName) "0")
-               (not (member (strcase layerName) keepLayers))
-               (not (wcmatch layerName "*|*")))
-        (setq removedCount (+ removedCount (_erase-entities-on-layer layerName)))
-      )
-    )
+    (setq removedCount (_erase-entities-outside keepLayers))
 
     (command-s "_.-PURGE" "_A" "*" "_N")
 
@@ -342,7 +340,7 @@
     (princ "\n[Warn] C16 不在 0 ~ C13 范围内，檩条一侧将反向伸出，请核对 Excel。")
   )
 
-  (if (and (> dist_total 0) (setq ss_pur (ssget "_X" '((410 . "Model") (8 . "01Purlin-01,01Purlin-02")))))
+  (if (and (> dist_total 0) (setq ss_pur (ssget "_X" '((410 . "Model") (0 . "LINE,LWPOLYLINE,POLYLINE") (8 . "*[Pp][Uu][Rr][Ll][Ii][Nn]*")))))
     (progn
       (princ "\n[Step 2.5] 正在根据参考段生成完整檩条...")
       (setq mSpace (vla-get-ModelSpace acadDoc))
@@ -371,7 +369,8 @@
   (if (and (> rowCount 0) (> spacing 0))
     (progn
       (princ "\n[Step 3] 正在对目标图层进行静默阵列...")
-      (setq ss (ssget "_X" '((410 . "Model") (8 . "02Beam,03Brace,04Column"))))
+      (setq ss (ssget "_X" '((410 . "Model") (0 . "LINE,ARC,CIRCLE,ELLIPSE,LWPOLYLINE,POLYLINE,SPLINE")
+                                (-4 . "<NOT") (8 . "*[Pp][Uu][Rr][Ll][Ii][Nn]*") (-4 . "NOT>"))))
       (if ss
         (progn
           (setq i 1)

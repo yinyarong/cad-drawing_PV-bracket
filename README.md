@@ -82,7 +82,7 @@ Browse to the file, click **Load**.
 | `h` / `w` | PV panel height / width (mm) | 2382 / 1134 |
 | `n` / `m` | Row count / column count | 2 / 12 |
 | `hole` | Hole spacing (mm) | 1400 |
-| `nop` | Purlins per PV panel (2 or 3) | 2 |
+| `nop` | Purlins per PV panel (fixed, not in the dialog) | 2 |
 | `zn` | Number of brackets | 3 |
 | `zd` / `zd-e` | Middle-span / end-span bracket spacing (mm) | 3800 / 3800 |
 | `clearance` | Ground clearance below PV panel (mm) | 400 |
@@ -121,7 +121,8 @@ MyModel inside `PVRect_Singsun` does not read Excel; see [MyModel from the dialo
 | `NUM` | White | Numbering text |
 | `LTPJJ` | Yellow | Lower-tier details |
 | `STPM_SBEAM_THICK` | White | Thick beam lines |
-| `01Purlin-01` / `01Purlin-02` | Green | Elevation reduced copy: purlin-bracket axis lines (right half / left half); MyModel builds purlins from them |
+| `01Purlin-01up` / `01Purlin-01down` | Green | Elevation reduced copy: purlin-bracket axis lines of the right half, split by height (higher half → `up`, lower half → `down`; with an odd count the middle line goes to `up`; at 0° tilt split by X) |
+| `01Purlin-02up` / `01Purlin-02down` | Green | Same for the left half |
 | `02Beam` | Cyan | Elevation reduced copy: beam axis |
 | `03Brace` | Red | Elevation reduced copy: brace axes |
 | `04Column` | White | Elevation reduced copy: post axes |
@@ -139,23 +140,28 @@ The dialog opens. Choose **Plan view**, **Elevation view** or **MyModel** at the
 | Output | Result |
 |--------|--------|
 | Plan view | Array layout (panels, purlins, axes, dimensions). Type / Clearance / Beam H / Purlin H / post size are disabled |
-| Elevation view | Side elevation of the selected Type (C-post-double / O-post / C-post-single), plus a reduced copy of the member axes at real (mm) size on layers `01Purlin-01/02`, `02Beam`, `03Brace`, `04Column` |
+| Elevation view | Side elevation of the selected Type (C-post-double / O-post / C-post-single), plus a reduced copy of the member axes at real (mm) size on layers `01Purlin-01up/down`, `01Purlin-02up/down`, `02Beam`, `03Brace`, `04Column` |
 | MyModel | 3D analysis model + DXF export, see below |
 
 Command, function and global names use `_Singsun` / `PVRectSgs_` / `*sg_`, so this file can be loaded alongside other PVRect variants. The old `PVRect` command name no longer exists.
 
 #### MyModel from the PVRect_Singsun dialog
 
-Only `w`, `m`, `zn`, `zd`, `zd-e` and **E-W Slope** are used; everything else is disabled. The current drawing must be saved and contain the member axis lines on `01Purlin-01/02`, `02Beam`, `03Brace`, `04Column` (e.g. the reduced copy from Elevation view).
+Only `w`, `m`, `zn`, `zd`, `zd-e` and **E-W Slope** are used; everything else is disabled. The current drawing must be saved and contain the member axis lines (e.g. the reduced copy from Elevation view). Layers are classified by name:
+
+| Layer | Treated as |
+|-------|------------|
+| Name contains `Purlin` (any case) | **Purlin** — each LINE / polyline is replaced by a full-length purlin on the same layer |
+| Any other layer | **Frame** — every curve (line, arc, circle, ellipse, polyline, spline) is copied to each frame position on the same layer |
 
 - Purlin length `L = m·w + (m−1)·20 + 2·75`
 - Frame offsets match the plan view: `zn = 1` → one frame; `zn = 2` → one span `zd-e`; `zn ≥ 3` → end spans `zd-e`, middle spans `zd`
 - Frames are centred on the purlin: +Y overhang `= (L − total span) / 2`
 - E-W Slope tilts the purlins along their length; spacings `zd` / `zd-e` are measured along the slope. A positive slope makes frames lower towards −Y
 
-Steps: rotate all model-space objects 90° about X → build full-length purlins from the `01Purlin` reference lines → copy `02Beam` / `03Brace` / `04Column` to every frame → delete layers without curves and PURGE → save `<drawing-name>.dxf` next to the drawing.
+Steps: rotate all model-space objects 90° about X → build full-length purlins from lines on `*Purlin*` layers → copy the curves on all other layers to every frame → erase objects on layers without curves (text / dimension / hatch / block-only layers) and PURGE → save `<drawing-name>.dxf` next to the drawing. Every layer that holds curves is kept; layer names are compared exactly, so names containing `#`, `@`, `.`, `*` etc. no longer match other layers.
 
-> MyModel rotates **everything** in model space and deletes other layers. Run it on a dedicated drawing or a copy. Running it twice on the same drawing asks for confirmation, because it would rotate another 90°.
+> MyModel rotates **everything** in model space and treats every non-Purlin curve as part of the frame, so other drawings (plan, full elevation) left in the file are copied into the model too. Run it on a drawing that holds only the model lines, or a copy. Block references are not curves: explode them first if their layers must survive. Running it twice on the same drawing asks for confirmation, because it would rotate another 90°.
 
 ### YYR — structural cross-section and label toolkit
 
@@ -212,7 +218,7 @@ Both closed polylines are placed on layer `03Brace` (white), centered on the sel
 
 ### Example 3 — batch row copy with Excel parameters
 
-With a `.dwg` open that has structural entities on layers `02Beam`, `03Brace`, `04Column`, and a matching Excel file with `spacing = 5000`, `rowCount = 6` in `阵列计算`:
+With a `.dwg` open that has purlin reference lines on `*Purlin*` layers and the frame lines on other layers, and a matching Excel file with `spacing = 5000`, `rowCount = 6` in `阵列计算`:
 
 ```
 Command: MyModel
@@ -232,7 +238,8 @@ The script copies the bracket row 6 times at −5000 mm intervals along Y, clean
 | `MyModel` exits immediately | COM error connecting to Excel | Close other Excel instances, or ensure the `.xls*` file is not open read-only |
 | `Unknown command "PVRECT"` | Command was renamed | Load `PVRect_Singsun.lsp` and type `PVRect_Singsun` |
 | `[MyModel ERR] Drawing is not saved` | MyModel exports the DXF next to the drawing | Save the drawing first |
-| MyModel builds no purlins | No lines on `01Purlin-01` / `01Purlin-02` | Generate the Elevation view first, or draw the reference lines on those layers |
+| MyModel builds no purlins | No lines on a layer whose name contains `Purlin` | Generate the Elevation view first, or draw the reference lines on such a layer |
+| Text, dimensions or blocks disappear after MyModel | Layers holding no curves are cleaned up | Expected; keep a copy of the drawing, or explode blocks first |
 
 ## Contributing
 

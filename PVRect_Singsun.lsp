@@ -533,10 +533,8 @@
     (progn
       (foreach item data
         (setq key (car item) val (cdr item))
-        (if (= key "val_nop")
-          (set_tile key (if (= val "3") "1" "0"))
-          (set_tile key val)
-        )
+        ;; 每块组件固定 2 根檩条，Excel 中的檩条数不再导入
+        (if (/= key "val_nop") (set_tile key val))
         (cond
           ((= key "val_h")    (setq h_str    val))
           ((= key "val_w")    (setq w_str    val))
@@ -547,7 +545,6 @@
           ((= key "val_zd")   (setq zd_str   val) (set_tile "val_zde" val) (setq zde_str val))
           ((= key "val_clearance") (setq clearance_str val))
           ((= key "val_angle")     (setq angle_str val))
-          ((= key "val_nop")       (setq nop_str (if (= val "3") "3" "2")))
         )
       )
       (prompt "\n>>> Excel data imported.")
@@ -559,6 +556,24 @@
 
 ;; =============================================================================
 ;; 2. Post-processing (Stable logic from v33/v34)
+
+;; 缩略图檩条短线按高度分图层：按线中点 Y 升序（MyModel 旋转后 Y 即 Z；Y 相同按 X），
+;; 低的一半 → <base>down，其余 → <base>up（根数为奇数时中间一根归 up）。返回 (down数 up数)
+(defun PVRectSgs_SplitPurlinUpDown (ents base / lst n_down k ed)
+  (setq lst (mapcar '(lambda (e / d p10 p11)
+                       (setq d (entget e) p10 (cdr (assoc 10 d)) p11 (cdr (assoc 11 d)))
+                       (list (/ (+ (cadr p10) (cadr p11)) 2.0) (/ (+ (car p10) (car p11)) 2.0) e))
+                    ents)
+        lst (vl-sort lst '(lambda (a b) (if (equal (car a) (car b) 1e-6) (< (cadr a) (cadr b)) (< (car a) (car b)))))
+        n_down (/ (length lst) 2)
+        k 0)
+  (foreach it lst
+    (setq ed (entget (caddr it)))
+    (entmod (subst (cons 8 (strcat base (if (< k n_down) "down" "up"))) (assoc 8 ed) ed))
+    (setq k (1+ k))
+  )
+  (list n_down (- (length lst) n_down))
+)
 
 ;; 根据 purlin_H (mm) 找最近的 Purlin-Bracket-XX 块（XX 为 5mm 步进，最小 60）
 ;; 返回块名字符串，若范围内无任何块则返回 nil
@@ -589,7 +604,7 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRectSgs_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block ax_line_len ax_r ax_cy ax_th ax_dim_y ax_n ax_vx_prev ax_vx_next a1 a2 al ang_align_x ang_rad ar ax_l_ox ax_l_oy ax_l_rot ax_l_rx ax_l_ry ax_r_ox ax_r_oy ax_r_rot ax_r_rx ax_r_ry axis_angle axis_end_pt axis_start_pt axis_total_len axis_x1 axis_x2 axis_x_mid beam_dy_per_dx beam_half_h beam_half_h2 block_name brace_int1_x brace_int1_y brace_int2_x brace_int2_y cps_bdim_pos_l cps_bdim_pos_r cps_bext_l_bot cps_bext_l_top cps_bext_r_bot cps_bext_r_top cps_blp1 cps_blp2 cps_blp3 cps_blp4 cps_bperp_l cps_bperp_r cps_brace_bot_y cps_brace_top_l cps_brace_top_r cps_brace_xoff cps_brp1 cps_brp2 cps_brp3 cps_brp4 cps_hw_new cps_hy_new cps_hy_new2 cps_nut_xoff cps_post_bot cps_post_hw1 cps_post_hw2 cps_post_top cps_post_x cps_post_y cps_split_offset cur_pv_x cy dim_loc_x dim_loc_y dim_loc_y2 dim_nx dim_ny dim_offset e_elev elev_center_x elev_line_bot_y elev_line_top_y elev_line_x1 elev_line_x2 elev_t1_maxx elev_t1_minx elev_t1_str elev_t1_width elev_title_y en half_d key_points l_span line_end_pt line_end_r_pt line_end_r_x line_end_r_y line_end_x line_end_y line_start_r_x line_start_r_y line_start_x line_start_y max_axis_x mid_orig_x mid_orig_y mid_x mid_y min_axis_x my_breaks new_line_x1 new_line_x2 next_pv_x obolt_offset_cad offset_dist opost_ang_arc_x opost_ang_arc_y opost_ang_t opost_ang_vx opost_base_dist opost_post_x1 opost_post_x2 opost_tri_dist_cad opost_tri_top_y1 opost_tri_top_y2 p1 p2 pi_idx post1_x post2_x pv_p1_x pv_p1_y pv_p2_x pv_p2_y pv_start_x pv_start_y r1 r2 rect_half_h rect_half_w rl rr screw_pile_block seg1_loc_x seg1_loc_y seg1_mid_x seg1_mid_y seg2_loc_x seg2_loc_y seg2_mid_x seg2_mid_y seg3_loc_x seg3_loc_y seg3_mid_x seg3_mid_y seg4_loc_x seg4_loc_y seg4_mid_x seg4_mid_y sorted_points sp_vla ss_obs ss_pv target_w_cad target_w_phys tb_elev total_dim_loc_x total_dim_loc_y total_dim_offset total_mid_x total_mid_y tri_conn_block u1_clamp_y u1_orig_x u1_rot u1_rot_x u1_rot_y u2_clamp_y u2_orig_x u2_rot u2_rot_x u2_rot_y w_phys_max sp_bbmin sp_bbmax)
+(defun PVRectSgs_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt purlin_lo purlin_hi cnt_lo cnt_hi scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block ax_line_len ax_r ax_cy ax_th ax_dim_y ax_n ax_vx_prev ax_vx_next a1 a2 al ang_align_x ang_rad ar ax_l_ox ax_l_oy ax_l_rot ax_l_rx ax_l_ry ax_r_ox ax_r_oy ax_r_rot ax_r_rx ax_r_ry axis_angle axis_end_pt axis_start_pt axis_total_len axis_x1 axis_x2 axis_x_mid beam_dy_per_dx beam_half_h beam_half_h2 block_name brace_int1_x brace_int1_y brace_int2_x brace_int2_y cps_bdim_pos_l cps_bdim_pos_r cps_bext_l_bot cps_bext_l_top cps_bext_r_bot cps_bext_r_top cps_blp1 cps_blp2 cps_blp3 cps_blp4 cps_bperp_l cps_bperp_r cps_brace_bot_y cps_brace_top_l cps_brace_top_r cps_brace_xoff cps_brp1 cps_brp2 cps_brp3 cps_brp4 cps_hw_new cps_hy_new cps_hy_new2 cps_nut_xoff cps_post_bot cps_post_hw1 cps_post_hw2 cps_post_top cps_post_x cps_post_y cps_split_offset cur_pv_x cy dim_loc_x dim_loc_y dim_loc_y2 dim_nx dim_ny dim_offset e_elev elev_center_x elev_line_bot_y elev_line_top_y elev_line_x1 elev_line_x2 elev_t1_maxx elev_t1_minx elev_t1_str elev_t1_width elev_title_y en half_d key_points l_span line_end_pt line_end_r_pt line_end_r_x line_end_r_y line_end_x line_end_y line_start_r_x line_start_r_y line_start_x line_start_y max_axis_x mid_orig_x mid_orig_y mid_x mid_y min_axis_x my_breaks new_line_x1 new_line_x2 next_pv_x obolt_offset_cad offset_dist opost_ang_arc_x opost_ang_arc_y opost_ang_t opost_ang_vx opost_base_dist opost_post_x1 opost_post_x2 opost_tri_dist_cad opost_tri_top_y1 opost_tri_top_y2 p1 p2 pi_idx post1_x post2_x pv_p1_x pv_p1_y pv_p2_x pv_p2_y pv_start_x pv_start_y r1 r2 rect_half_h rect_half_w rl rr screw_pile_block seg1_loc_x seg1_loc_y seg1_mid_x seg1_mid_y seg2_loc_x seg2_loc_y seg2_mid_x seg2_mid_y seg3_loc_x seg3_loc_y seg3_mid_x seg3_mid_y seg4_loc_x seg4_loc_y seg4_mid_x seg4_mid_y sorted_points sp_vla ss_obs ss_pv target_w_cad target_w_phys tb_elev total_dim_loc_x total_dim_loc_y total_dim_offset total_mid_x total_mid_y tri_conn_block u1_clamp_y u1_orig_x u1_rot u1_rot_x u1_rot_y u2_clamp_y u2_orig_x u2_rot u2_rot_x u2_rot_y w_phys_max sp_bbmin sp_bbmax)
   ;; For C/O-post: capture last entity before PostFix draws anything.
   ;; This boundary covers the main array AND any ZHWBZH_Singsun-generated entities.
   (setq postfix_start_ent (if (not (= *sg_global_elev_type* 0)) (entlast) nil))
@@ -1831,13 +1846,16 @@
             ss_scaled_all  (ssadd))
 
       ;; Create target layers
-      (if (not (tblsearch "LAYER" "01Purlin-01")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "01Purlin-01") (70 . 0) (62 . 3))))
-      (if (not (tblsearch "LAYER" "01Purlin-02")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "01Purlin-02") (70 . 0) (62 . 3))))
+      (foreach lay '("01Purlin-01up" "01Purlin-01down" "01Purlin-02up" "01Purlin-02down")
+        (if (not (tblsearch "LAYER" lay))
+          (entmake (list '(0 . "LAYER") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbLayerTableRecord") (cons 2 lay) '(70 . 0) '(62 . 3))))
+      )
       (if (not (tblsearch "LAYER" "02Beam"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "02Beam")      (70 . 0) (62 . 4))))
       (if (not (tblsearch "LAYER" "03Brace"))     (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "03Brace")     (70 . 0) (62 . 1))))
       (if (not (tblsearch "LAYER" "04Column"))    (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "04Column")    (70 . 0) (62 . 7))))
 
-      ;; == 1. PURLIN short lines → 01Purlin-01 / 01Purlin-02 (left half / right half) ==
+      ;; == 1. PURLIN short lines → 01Purlin-01 / 01Purlin-02 (right half / left half),
+      ;;       each half split by height into ...up / ...down ==
       (if *sg_elev_purlin_ents*
         (progn
           (setq ss_purlin (ssadd))
@@ -1856,7 +1874,8 @@
                 (ssadd en_new ss_scaled_all)
                 (setq en_new (entnext en_new))
               )
-              ;; Sort by start-point X to split left→01Purlin-02, right→01Purlin-01
+              ;; Sort by start-point X to split left→01Purlin-02, right→01Purlin-01,
+              ;; then split each half by height (up / down)
               (setq purlin_xlist nil
                     i 0)
               (while (< i (sslength ss_new_purlin))
@@ -1868,17 +1887,19 @@
               )
               (setq purlin_xlist (vl-sort purlin_xlist '(lambda (a b) (< (car a) (car b)))))
               (setq split_idx (/ (length purlin_xlist) 2)
-                    k 0)
+                    k 0 purlin_lo nil purlin_hi nil)
               (foreach px purlin_xlist
-                (setq ent (cadr px)
-                      edata (entget ent)
-                      tgt (if (< k split_idx) "01Purlin-02" "01Purlin-01"))
-                (entmod (subst (cons 8 tgt) (assoc 8 edata) edata))
+                (if (< k split_idx)
+                  (setq purlin_lo (cons (cadr px) purlin_lo))
+                  (setq purlin_hi (cons (cadr px) purlin_hi))
+                )
                 (setq k (1+ k))
               )
+              (setq cnt_lo (PVRectSgs_SplitPurlinUpDown purlin_lo "01Purlin-02")
+                    cnt_hi (PVRectSgs_SplitPurlinUpDown purlin_hi "01Purlin-01"))
               (prompt (strcat "\n>>> Purlin: " (itoa (sslength ss_new_purlin)) " lines copied ("
-                              (itoa split_idx) "->01Purlin-02, "
-                              (itoa (- (sslength ss_new_purlin) split_idx)) "->01Purlin-01)."))
+                              "01Purlin-02 up/down " (itoa (cadr cnt_lo)) "/" (itoa (car cnt_lo)) ", "
+                              "01Purlin-01 up/down " (itoa (cadr cnt_hi)) "/" (itoa (car cnt_hi)) ")."))
             )
           )
         )
@@ -2609,7 +2630,7 @@
 (defun PVRectSgs_MyModel (ew_slope purlin_len dist1 frame_offs / *error* ss ss_all i old_osmode old_cmdecho
                            pt0 pt1 obj newObj moveVec dist2 ss_pur en p1 p2 base_pt mSpace j failCount
                            curLayer dwg_full dwg_path dxf_name dxf_path acadDoc ans off
-                           _collect-curve-layers _erase-entities-on-layer _layer-name-list
+                           _collect-curve-layers _erase-entities-outside _layer-name-list
                            _prepare-layers-for-delete _delete-extra-layers ew_r ew_c ew_s)
 
   (defun *error* (msg)
@@ -2642,15 +2663,20 @@
     keepLayers
   )
 
-  (defun _erase-entities-on-layer (layName / ss_layer idx removedCount)
+  ;; 删除不在 keepLayers 中的图层上的全部对象（按图层名精确比较，不作通配匹配；外部参照图层除外）
+  (defun _erase-entities-outside (keepLayers / ss_all_e idx en layName removedCount)
     (setq removedCount 0)
-    (if (setq ss_layer (ssget "_X" (list (cons 8 layName))))
+    (if (setq ss_all_e (ssget "_X"))
       (progn
         (setq idx 0)
-        (repeat (sslength ss_layer)
-          (if (not (vl-catch-all-error-p
-                     (vl-catch-all-apply 'vla-delete
-                                         (list (vlax-ename->vla-object (ssname ss_layer idx))))))
+        (repeat (sslength ss_all_e)
+          (setq en (ssname ss_all_e idx)
+                layName (cdr (assoc 8 (entget en))))
+          (if (and (/= (strcase layName) "0")
+                   (not (member (strcase layName) keepLayers))
+                   (not (wcmatch layName "*|*"))
+                   (not (vl-catch-all-error-p
+                          (vl-catch-all-apply 'vla-delete (list (vlax-ename->vla-object en))))))
             (setq removedCount (1+ removedCount))
           )
           (setq idx (1+ idx))
@@ -2687,14 +2713,7 @@
       (setvar "CLAYER" "0")
     )
 
-    (setq removedCount 0)
-    (foreach layerName (_layer-name-list doc)
-      (if (and (/= (strcase layerName) "0")
-               (not (member (strcase layerName) keepLayers))
-               (not (wcmatch layerName "*|*")))
-        (setq removedCount (+ removedCount (_erase-entities-on-layer layerName)))
-      )
-    )
+    (setq removedCount (_erase-entities-outside keepLayers))
 
     (command-s "_.-PURGE" "_A" "*" "_N")
 
@@ -2792,7 +2811,7 @@
   )
 
   ;; 2. 由参考段生成整根檩条：自原始榀沿坡向 +Y 伸出 dist1、向 -Y 伸出 dist2
-  (if (and (> purlin_len 0) (setq ss_pur (ssget "_X" '((410 . "Model") (8 . "01Purlin-01,01Purlin-02")))))
+  (if (and (> purlin_len 0) (setq ss_pur (ssget "_X" '((410 . "Model") (0 . "LINE,LWPOLYLINE,POLYLINE") (8 . "*[Pp][Uu][Rr][Ll][Ii][Nn]*")))))
     (progn
       (princ "\n[Step 2] Building full-length purlins from reference segments...")
       (setq mSpace (vla-get-ModelSpace acadDoc))
@@ -2819,7 +2838,8 @@
   (if frame_offs
     (progn
       (princ "\n[Step 3] Placing frames...")
-      (setq ss (ssget "_X" '((410 . "Model") (8 . "02Beam,03Brace,04Column"))))
+      (setq ss (ssget "_X" '((410 . "Model") (0 . "LINE,ARC,CIRCLE,ELLIPSE,LWPOLYLINE,POLYLINE,SPLINE")
+                                (-4 . "<NOT") (8 . "*[Pp][Uu][Rr][Ll][Ii][Nn]*") (-4 . "NOT>"))))
       (if ss
         (progn
           (foreach off frame_offs
@@ -2834,7 +2854,7 @@
           )
           (princ (strcat "\n>>> Frames done: " (itoa (length frame_offs)) " copies created."))
         )
-        (princ "\n[Warn] No objects on 02Beam / 03Brace / 04Column; frames not copied.")
+        (princ "\n[Warn] No curves on non-Purlin layers; frames not copied.")
       )
     )
   )
@@ -2878,7 +2898,7 @@
   (setq model (= (get_tile "view_mode") "rb_model")
         plan  (/= (get_tile "view_mode") "rb_elev")
         typ   (get_tile "val_elevation"))
-  (foreach k '("val_h" "val_n" "val_hole" "val_nop" "val_angle")
+  (foreach k '("val_h" "val_n" "val_hole" "val_angle")
     (mode_tile k (if model 1 0))
   )
   (foreach k '("val_elevation" "val_clearance" "val_beam_h" "val_purlin_H")
@@ -2918,7 +2938,7 @@
     (write-line "    : row { : edit_box { label = \"Cols (m):\"; key = \"val_m\"; edit_width = 10; } : spacer { width = 15; } }" f)
     (write-line "    : row {" f)
     (write-line "      : edit_box { label = \"Hole Dist.:\"; key = \"val_hole\"; edit_width = 10; }" f)
-    (write-line "      : popup_list { label = \"Purlin per PV:\"; key = \"val_nop\"; edit_width = 10; }" f)
+    (write-line "      : spacer { width = 15; }" f)
     (write-line "    }" f)
     (write-line "    : row {" f)
     (write-line "      : edit_box { label = \"Clearance:\"; key = \"val_clearance\"; edit_width = 10; }" f)
@@ -2948,13 +2968,9 @@
     (setq dcl_id (load_dialog dcl_file))
     (if (not (new_dialog "pvrect_dlg" dcl_id)) (progn (princ "\nError loading DCL.") (exit)))
     
-    (start_list "val_nop")
-    (add_list "2")
-    (add_list "3")
-    (end_list)
     
     (set_tile "val_h" h_str) (set_tile "val_w" w_str) (set_tile "val_n" n_str) (set_tile "val_m" m_str) (set_tile "val_hole" hole_str) (set_tile "val_zn" zn_str) (set_tile "val_zd" zd_str) (set_tile "val_zde" zde_str) (set_tile "val_ew_slope" ew_slope_str)
-    (set_tile "val_clearance" clearance_str) (set_tile "val_angle" angle_str) (set_tile "val_nop" (if (= nop_str "3") "1" "0"))
+    (set_tile "val_clearance" clearance_str) (set_tile "val_angle" angle_str)
     (start_list "val_elevation")
     ;; 类型：0 C-post-double / 1 O-post / 2 C-post-single（仅立面图使用）
     (add_list "C-post-double") (add_list "O-post") (add_list "C-post-single")
@@ -2969,7 +2985,7 @@
 
     (action_tile "val_elevation" "(PVRectSgs_DlgModes)")
     (action_tile "view_mode" "(PVRectSgs_DlgModes)")
-    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") ew_slope_str (get_tile \"val_ew_slope\") view_str (cond ((= (get_tile \"view_mode\") \"rb_elev\") \"elev\") ((= (get_tile \"view_mode\") \"rb_model\") \"model\") (T \"plan\")) clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") nop_str (if (= (get_tile \"val_nop\") \"1\") \"3\" \"2\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") beam_h_str (get_tile \"val_beam_h\") purlin_H_str (get_tile \"val_purlin_H\")) (done_dialog 1)")
+    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") ew_slope_str (get_tile \"val_ew_slope\") view_str (cond ((= (get_tile \"view_mode\") \"rb_elev\") \"elev\") ((= (get_tile \"view_mode\") \"rb_model\") \"model\") (T \"plan\")) clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") beam_h_str (get_tile \"val_beam_h\") purlin_H_str (get_tile \"val_purlin_H\")) (done_dialog 1)")
     (action_tile "cancel" "(done_dialog 0)")
     (action_tile "btn_import" "(PVRectSgs_ImportExcel)")
     
