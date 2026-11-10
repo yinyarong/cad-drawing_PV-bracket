@@ -300,7 +300,7 @@
   names
 )
 
-(defun PVRectSgs_ReadExcelDefaults ( / dwg_dir excel_files excel_path excel_app workbooks workbook sheets sheet result err i count name found is_euro header_b3 header_c3 e11_val target_name target_sheet_name app_created wb_opened val open_err_msg b7_txt c7_txt d9_txt e9_txt b13_txt c13_txt score best_score best_sheet best_name sheet_name raw_c9 num_c9 final_c9 old_alerts)
+(defun PVRectSgs_ReadExcelDefaults ( / dwg_dir excel_files excel_path excel_app workbooks workbook sheets sheet result err i count name found is_euro header_b3 header_c3 e11_val target_name target_sheet_name app_created wb_opened val open_err_msg b7_txt c7_txt d9_txt e9_txt b13_txt c13_txt score best_score best_sheet best_name sheet_name raw_c9 num_c9 final_c9 raw_h7 num_h7 final_h7 f7_txt old_alerts)
   (setq dwg_dir (getvar "DWGPREFIX"))
   (cond
     ((or (null dwg_dir) (= dwg_dir ""))
@@ -439,17 +439,28 @@
                         )
 
                         (if is_euro
-                          (setq result
-                            (list
-                              (cons "val_h"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "B7") nil))
-                              (cons "val_w"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "C7") nil))
-                              (cons "val_n"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "B13") T))
-                              (cons "val_m"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "C13") T))
-                              (cons "val_hole" "1400")
-                              (cons "val_zn"   (if (numberp e11_val)
-                                                 (itoa (1+ (fix (+ e11_val 0.5))))
-                                                 (PVRectSgs_CellValueToString e11_val T)))
-                              (cons "val_zd"   (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "D11") nil))
+                          (progn
+                            ;; 欧标：离地高度 H7 单位为 m，对话框为 mm；角度 F7 单位为度。单元格为空时保留对话框原值
+                            (setq raw_h7 (PVRectSgs_GetCellValueByAddr sheet "H7")
+                                  num_h7 (if (numberp raw_h7) raw_h7 (distof (PVRectSgs_CellValueToString raw_h7 nil) 2))
+                                  final_h7 (if num_h7 (PVRectSgs_CellValueToString (* num_h7 1000.0) nil) (PVRectSgs_CellValueToString raw_h7 nil))
+                                  f7_txt (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "F7") nil))
+                            (setq result
+                              (append
+                                (list
+                                  (cons "val_h"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "B7") nil))
+                                  (cons "val_w"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "C7") nil))
+                                  (cons "val_n"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "B13") T))
+                                  (cons "val_m"    (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "C13") T))
+                                  (cons "val_hole" "1400")
+                                  (cons "val_zn"   (if (numberp e11_val)
+                                                     (itoa (1+ (fix (+ e11_val 0.5))))
+                                                     (PVRectSgs_CellValueToString e11_val T)))
+                                  (cons "val_zd"   (PVRectSgs_CellValueToString (PVRectSgs_GetCellValueByAddr sheet "D11") nil))
+                                )
+                                (if (/= final_h7 "") (list (cons "val_clearance" final_h7)))
+                                (if (/= f7_txt "") (list (cons "val_angle" f7_txt)))
+                              )
                             )
                           )
                           (progn
