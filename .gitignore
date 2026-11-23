@@ -1,0 +1,9 @@
+# AutoLISP historical variants (not build inputs)
+*.bak*
+
+# AutoCAD lock/temp files
+*.dwl
+*.dwl2
+*.sv$
+*.ac$
+~$*
