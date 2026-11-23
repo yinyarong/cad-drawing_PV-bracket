@@ -558,6 +558,8 @@
           ((= key "val_angle")     (setq angle_str val))
         )
       )
+      (PVRectSgs_UpdatePhcExposure)
+      (setq phc_exposure_str (get_tile "val_phc_exposure"))
       (prompt "\n>>> Excel data imported.")
     )
     (prompt "\n>>> Import failed.")
@@ -905,7 +907,7 @@
                        ;; 绘制 post-axis #1/#2，C/O-post 时延伸轴线并绘制截面矩形
                        (setvar "CLAYER" "AXIS")
                        (cond
-                         ((or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 3))  ;; C-post: 上延 175, 下延 7500
+                         ((or (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)) (= *sg_global_elev_type* 3))  ;; C-post: 上延 175, 下延 7500
                           (setq post1_x     U1_rot_x
                                 post2_x     U2_rot_x
                                 post1_top_y  (+ U1_rot_y 175.0)
@@ -932,7 +934,7 @@
                                 post2_top_y U2_rot_y  post2_bot_y lower_top_axis_y)
                          )
                        )
-                       (if (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 2))
+                       (if (or (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)) (= *sg_global_elev_type* 2))
                          (progn
                            (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                          (cons 10 (list post1_x post1_top_y 0.0))
@@ -945,7 +947,7 @@
                          )
                        )
                        ;; C-post only: 每根立柱各画两个居中截面矩形
-                       (if (= *sg_global_elev_type* 1)
+                       (if (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4))
                          (progn
                            (setvar "CLAYER" "beam")
                            ;; U1 outer rect
@@ -1293,7 +1295,7 @@
                         )
 
                         ;; 仅 C-post / O-post: 沿 beam-angle-axis 绘制斜向截面矩形（beam 元素）
-                        (if (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 2) (= *sg_global_elev_type* 3))
+                        (if (or (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)) (= *sg_global_elev_type* 2) (= *sg_global_elev_type* 3))
                           (progn
                             (if (not (tblsearch "LAYER" "beam")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "beam") (70 . 0) (62 . 4))))
                             (setvar "CLAYER" "beam")
@@ -1459,7 +1461,7 @@
                         ;; 终点坐标使用前面计算的 brace_int1
                         (setq line_end_x brace_int1_x  line_end_y brace_int1_y)
                         ;; 创建直线
-                        (if (= *sg_global_elev_type* 1)
+                        (if (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4))
                           (progn
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list (+ line_start_x (+ post_half_w1 250.0)) line_start_y 0.0))
@@ -1496,7 +1498,7 @@
                         ;; 终点坐标使用前面计算的 brace_int2
                         (setq line_end_r_x brace_int2_x  line_end_r_y brace_int2_y)
                         ;; 创建直线
-                        (if (= *sg_global_elev_type* 1)
+                        (if (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4))
                           (progn
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list (- line_start_r_x (+ post_half_w1 250.0)) line_start_r_y 0.0))
@@ -1530,7 +1532,7 @@
                         ;; Inward offset = conn_half_x - 150 CAD
                         ;; Y outer 100 mm -> half 250 CAD;  Y inner 94 mm -> half 235 CAD
                         ;; Nuts: ±25 mm = ±125 CAD on Y; w/2+50 mm = post_half_w1+250 CAD outboard on X
-                        (if (= *sg_global_elev_type* 1)
+                        (if (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4))
                           (progn
                             (setq conn_half_x (/ (+ post_half_w1 550.0) 2.0)
                                   conn_cx_l   (+ line_start_x   (- conn_half_x 150.0))
@@ -1695,7 +1697,7 @@
                         )
                         ;; C/O-post: angle label between beam-axis and DIM horizontal line
                         ;; 角度为 0 时梁轴与地面平行，无交点可标注（且下面要除以 sin），跳过
-                        (if (and (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 2) (= *sg_global_elev_type* 3))
+                        (if (and (or (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)) (= *sg_global_elev_type* 2) (= *sg_global_elev_type* 3))
                                  (> (abs (sin ang_rad)) 1e-6))
                           (progn
                             (setvar "CLAYER" "DIM")
@@ -2132,7 +2134,7 @@
   )
 
   ;; Extend visible brace-axis lines both ends by 30mm (150 CAD units)
-  (if (and *sg_brace_vis_ents* (= *sg_global_elev_type* 1))
+  (if (and *sg_brace_vis_ents* (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)))
     (progn
       (setq brace_ext_cad (* 30.0 5.0))
       (foreach en *sg_brace_vis_ents*
@@ -2168,7 +2170,7 @@
   )
 
   ;; Draw brace-section rectangles (outer 50mm, inner 30mm wide) centered on each brace-axis line
-  (if (and *sg_brace_vis_ents* (= *sg_global_elev_type* 1))
+  (if (and *sg_brace_vis_ents* (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)))
     (progn
       (setq brace_hw1 (* 25.0 5.0)
             brace_hw2 (* 15.0 5.0))
@@ -2314,7 +2316,7 @@
   )
 
   ;; Label brace-axis length with TSSD_20_100, 185mm below the axis line
-  (if (and *sg_brace_vis_ents* (= *sg_global_elev_type* 1))
+  (if (and *sg_brace_vis_ents* (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)))
     (progn
       (setvar "CLAYER" "DIM")
       (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
@@ -2354,7 +2356,7 @@
   )
 
   ;; Label post-axis length with TSSD_20_100, 185mm outside the drawing
-  (if (and *sg_elev_post_ents* (= *sg_global_elev_type* 1))
+  (if (and *sg_elev_post_ents* (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)))
     (progn
       (setvar "CLAYER" "DIM")
       (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
@@ -2387,7 +2389,7 @@
   )
 
   ;; Label post-axis length BELOW the DIM horizontal line, 185mm inside the drawing
-  (if (and *sg_elev_post_ents* lower_top_axis_y (= *sg_global_elev_type* 1))
+  (if (and *sg_elev_post_ents* lower_top_axis_y (or (= *sg_global_elev_type* 1) (= *sg_global_elev_type* 4)))
     (progn
       (setvar "CLAYER" "DIM")
       (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
@@ -2905,10 +2907,11 @@
 ;;   平面图：禁用仅立面使用的参数（Type / Clearance / Beam H / Purlin H / 立柱尺寸）
 ;;   立面图：按类型启用立柱参数（0 C-post-double / 1 O-post / 2 C-post-single）
 ;;   MyModel：仅开放 w / m / zn / zd / zde / 东西向坡度（及 Import Excel）
-(defun PVRectSgs_DlgModes ( / model plan typ)
+(defun PVRectSgs_DlgModes ( / model plan typ phc)
   (setq model (= (get_tile "view_mode") "rb_model")
         plan  (/= (get_tile "view_mode") "rb_elev")
-        typ   (get_tile "val_elevation"))
+        typ   (get_tile "val_elevation")
+        phc   (= typ "3"))
   (foreach k '("val_h" "val_n" "val_hole" "val_angle")
     (mode_tile k (if model 1 0))
   )
@@ -2917,17 +2920,27 @@
   )
   (mode_tile "val_post_w" (if (and (not plan) (or (= typ "0") (= typ "2"))) 0 1))
   (mode_tile "val_post_d" (if (and (not plan) (= typ "1")) 0 1))
+  (mode_tile "val_phc_diameter" (if (and (not plan) phc) 0 1))
+  (mode_tile "val_phc_exposure" (if (and (not plan) phc) 0 1))
   (mode_tile "val_ew_slope" (if model 0 1))
+)
+
+(defun PVRectSgs_UpdatePhcExposure ( / clearance)
+  (setq clearance (distof (get_tile "val_clearance") 2))
+  (if clearance
+    (set_tile "val_phc_exposure" (rtos (- clearance 100.0) 2 0))
+  )
+  (princ)
 )
 
 ;; =============================================================================
 ;; 4. Main Entry Command
 ;; =============================================================================
 
-(defun c:PVRect_Singsun ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str view_str ew_slope_str ew_slope mm_len mm_offs mm_dist1 post_w_str post_d_str beam_h_str purlin_H_str dialog_done elev_type post_w post_d beam_h purlin_H w h n m hole zn zd zde clearance angle_val nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list actual_len dim_dx dim_dy dim_loc_x dim_loc_y dim_nx dim_ny dim_p1_x dim_p1_y dim_p2_x dim_p2_y new_brace_dx new_brace_dy new_brace_end_x new_brace_end_y new_brace_ext new_brace_len new_brace_start_x new_brace_start_y new_brace_ux new_brace_uy new_mirror_axis_x ptbase_x ptbase_y right2_axis_x right_axis_x *error*)
+(defun c:PVRect_Singsun ( / dcl_id dcl_file f h_str w_str n_str m_str hole_str zn_str zd_str zde_str clearance_str angle_str nop_str elev_str view_str ew_slope_str ew_slope mm_len mm_offs mm_dist1 post_w_str post_d_str phc_diameter_str phc_exposure_str beam_h_str purlin_H_str dialog_done elev_type post_w post_d phc_diameter phc_exposure beam_h purlin_H w h n m hole zn zd zde clearance angle_val nop pt res ri ci vi ptbase axis_mid axis_y1 axis_y2 startX endX array_width center_x vert_axes_width start_vx top_y bottom_y cur_vx SF h_eval w_eval hole_eval zd_eval zde_eval gap extX axis_gap purlin_half_h beam_half_w beam_shrink dim_y dim_y2 old_osmode px1 px2 px3 old_layer old_dimstyle bottom_axis_ent click_x click_y cmd_str vert_y_list dim_x_vert dim_x2_vert y_a y_b i y_pv_bot y_pv_top cur_y_pv_bot cur_y_pv_top next_y_pv_bot vx_list brace_start_x brace_start_y brace_end_x brace_end_y brace_dx brace_dy brace_len brace_ext brace_ux brace_uy mirror_axis_x upper_only_list actual_len dim_dx dim_dy dim_loc_x dim_loc_y dim_nx dim_ny dim_p1_x dim_p1_y dim_p2_x dim_p2_y new_brace_dx new_brace_dy new_brace_end_x new_brace_end_y new_brace_ext new_brace_len new_brace_start_x new_brace_start_y new_brace_ux new_brace_uy new_mirror_axis_x ptbase_x ptbase_y right2_axis_x right_axis_x *error*)
   (defun *error* (msg) (PVRectSgs_OnError msg))
   (setq *sg_old_osmode_global* nil *sg_old_layer_global* nil *sg_pvrect_layers_off* nil)
-  (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" elev_str "0" view_str "plan" ew_slope_str "0" post_w_str "80" post_d_str "60" beam_h_str "100" purlin_H_str "80" dialog_done nil)
+  (setq h_str "2382" w_str "1134" n_str "2" m_str "12" hole_str "1400" zn_str "3" zd_str "3800" zde_str "3800" clearance_str "400" angle_str "20" nop_str "2" elev_str "0" view_str "plan" ew_slope_str "0" post_w_str "80" post_d_str "60" phc_diameter_str "300" phc_exposure_str "300" beam_h_str "100" purlin_H_str "80" dialog_done nil)
   
   (while (not dialog_done)
     (setq dcl_file (vl-filename-mktemp "pvrect_sg.dcl") f (open dcl_file "w"))
@@ -2968,6 +2981,8 @@
     (write-line "    : row { : popup_list { label = \"Type:\"; key = \"val_elevation\"; edit_width = 12; } : spacer { width = 5; } }" f)
     (write-line "    : row { : edit_box { label = \"Post Width W (mm):\"; key = \"val_post_w\"; edit_width = 8; } : spacer { width = 10; } }" f)
     (write-line "    : row { : edit_box { label = \"Post Diam D (mm):\"; key = \"val_post_d\"; edit_width = 8; } : spacer { width = 10; } }" f)
+    (write-line "    : row { : edit_box { label = \"PHC Diameter (mm):\"; key = \"val_phc_diameter\"; edit_width = 8; } : spacer { width = 10; } }" f)
+    (write-line "    : row { : edit_box { label = \"Above-ground Height (mm):\"; key = \"val_phc_exposure\"; edit_width = 8; } : spacer { width = 10; } }" f)
     (write-line "    : row { : edit_box { label = \"Beam H (mm):\"; key = \"val_beam_h\"; edit_width = 8; } : spacer { width = 10; } }" f)
     (write-line "    : row { : edit_box { label = \"Purlin H (mm):\"; key = \"val_purlin_H\"; edit_width = 8; } : spacer { width = 10; } }" f)
     (write-line "  }" f)
@@ -2983,20 +2998,23 @@
     (set_tile "val_h" h_str) (set_tile "val_w" w_str) (set_tile "val_n" n_str) (set_tile "val_m" m_str) (set_tile "val_hole" hole_str) (set_tile "val_zn" zn_str) (set_tile "val_zd" zd_str) (set_tile "val_zde" zde_str) (set_tile "val_ew_slope" ew_slope_str)
     (set_tile "val_clearance" clearance_str) (set_tile "val_angle" angle_str)
     (start_list "val_elevation")
-    ;; 类型：0 C-post-double / 1 O-post / 2 C-post-single（仅立面图使用）
-    (add_list "C-post-double") (add_list "O-post") (add_list "C-post-single")
+    ;; 类型：0 C-post-double / 1 O-post / 2 C-post-single / 3 PHC Pile
+    (add_list "C-post-double") (add_list "O-post") (add_list "C-post-single") (add_list "PHC Pile")
     (end_list)
     (set_tile "val_elevation" elev_str)
     (set_tile "view_mode" (cond ((= view_str "elev") "rb_elev") ((= view_str "model") "rb_model") (T "rb_plan")))
     (set_tile "val_post_w" post_w_str)
     (set_tile "val_post_d" post_d_str)
+    (set_tile "val_phc_diameter" phc_diameter_str)
+    (set_tile "val_phc_exposure" phc_exposure_str)
     (set_tile "val_purlin_H" purlin_H_str)
     (set_tile "val_beam_h" beam_h_str)
     (PVRectSgs_DlgModes)
 
     (action_tile "val_elevation" "(PVRectSgs_DlgModes)")
     (action_tile "view_mode" "(PVRectSgs_DlgModes)")
-    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") ew_slope_str (get_tile \"val_ew_slope\") view_str (cond ((= (get_tile \"view_mode\") \"rb_elev\") \"elev\") ((= (get_tile \"view_mode\") \"rb_model\") \"model\") (T \"plan\")) clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") beam_h_str (get_tile \"val_beam_h\") purlin_H_str (get_tile \"val_purlin_H\")) (done_dialog 1)")
+    (action_tile "val_clearance" "(PVRectSgs_UpdatePhcExposure)")
+    (action_tile "accept" "(setq h_str (get_tile \"val_h\") w_str (get_tile \"val_w\") n_str (get_tile \"val_n\") m_str (get_tile \"val_m\") hole_str (get_tile \"val_hole\") zn_str (get_tile \"val_zn\") zd_str (get_tile \"val_zd\") zde_str (get_tile \"val_zde\") ew_slope_str (get_tile \"val_ew_slope\") view_str (cond ((= (get_tile \"view_mode\") \"rb_elev\") \"elev\") ((= (get_tile \"view_mode\") \"rb_model\") \"model\") (T \"plan\")) clearance_str (get_tile \"val_clearance\") angle_str (get_tile \"val_angle\") elev_str (get_tile \"val_elevation\") post_w_str (get_tile \"val_post_w\") post_d_str (get_tile \"val_post_d\") phc_diameter_str (get_tile \"val_phc_diameter\") phc_exposure_str (get_tile \"val_phc_exposure\") beam_h_str (get_tile \"val_beam_h\") purlin_H_str (get_tile \"val_purlin_H\")) (done_dialog 1)")
     (action_tile "cancel" "(done_dialog 0)")
     (action_tile "btn_import" "(PVRectSgs_ImportExcel)")
     
@@ -3031,8 +3049,9 @@
   )
   (if (= res 1)
     (progn
-      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle_val (atof angle_str) nop (atoi nop_str) elev_type (if (= view_str "elev") (1+ (atoi elev_str)) 0) post_w (atof post_w_str) post_d (atof post_d_str) beam_h (max 50.0 (if (> (atof beam_h_str) 0) (atof beam_h_str) 100.0)) purlin_H (max 60.0 (if (> (atof purlin_H_str) 0) (atof purlin_H_str) 80.0)))
-      (if (and (> h 0) (> w 0) (> n 0) (> m 0) (> hole 0))
+      (setq h (atof h_str) w (atof w_str) n (atoi n_str) m (atoi m_str) hole (atof hole_str) zn (atoi zn_str) zd (atof zd_str) zde (atof zde_str) clearance (atof clearance_str) angle_val (atof angle_str) nop (atoi nop_str) elev_type (if (= view_str "elev") (1+ (atoi elev_str)) 0) post_w (atof post_w_str) post_d (atof post_d_str) phc_diameter (atof phc_diameter_str) phc_exposure (atof phc_exposure_str) beam_h (max 50.0 (if (> (atof beam_h_str) 0) (atof beam_h_str) 100.0)) purlin_H (max 60.0 (if (> (atof purlin_H_str) 0) (atof purlin_H_str) 80.0)))
+      (if (and (> h 0) (> w 0) (> n 0) (> m 0) (> hole 0)
+               (or (/= elev_type 4) (and (> phc_diameter 0) (>= phc_exposure 0))))
         (progn
           (setq pt (getpoint "\nSelect insertion point: "))
           (if pt
@@ -3297,7 +3316,7 @@
                   ;; Turn OFF everything that could interfere with selection (especially PV)
                   (command "_.-LAYER" "_OFF" "purlin,beam,PV,DIM" "")
                   (setq *sg_pvrect_layers_off* T)
-                  (setq *sg_last_ent_before_macro* (entlast) *sg_global_n* n *sg_global_m* m *sg_global_zn* zn *sg_global_center_x* center_x *sg_global_axis_y2_baseline* axis_y2 *sg_global_h* h *sg_global_hole* hole *sg_global_sf* SF *sg_global_startX* startX *sg_global_endX* endX *sg_global_dim_x_vert* dim_x_vert *sg_global_pt_x* (car pt) *sg_global_w_eval* w_eval *sg_global_gap* gap *sg_global_start_vx* start_vx *sg_global_zd_eval* zd_eval *sg_global_dim_y* dim_y *sg_global_dim_y2* dim_y2 *sg_global_top_y* top_y *sg_global_vx_list* vx_list *sg_global_bottom_y* bottom_y *sg_global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *sg_global_clearance* clearance *sg_global_angle* angle_val *sg_global_nop* nop *sg_global_elev_type* elev_type *sg_global_post_w* post_w *sg_global_post_d* post_d *sg_global_beam_h* beam_h *sg_global_purlin_H* purlin_H *sg_global_new_line_x1* nil *sg_scale_center_x* nil *sg_scale_center_y* nil *sg_old_osmode_global* old_osmode *sg_old_layer_global* old_layer)
+                  (setq *sg_last_ent_before_macro* (entlast) *sg_global_n* n *sg_global_m* m *sg_global_zn* zn *sg_global_center_x* center_x *sg_global_axis_y2_baseline* axis_y2 *sg_global_h* h *sg_global_hole* hole *sg_global_sf* SF *sg_global_startX* startX *sg_global_endX* endX *sg_global_dim_x_vert* dim_x_vert *sg_global_pt_x* (car pt) *sg_global_w_eval* w_eval *sg_global_gap* gap *sg_global_start_vx* start_vx *sg_global_zd_eval* zd_eval *sg_global_dim_y* dim_y *sg_global_dim_y2* dim_y2 *sg_global_top_y* top_y *sg_global_vx_list* vx_list *sg_global_bottom_y* bottom_y *sg_global_bottom_dim_y* (- bottom_y (* 600.0 SF)) *sg_global_clearance* clearance *sg_global_angle* angle_val *sg_global_nop* nop *sg_global_elev_type* elev_type *sg_global_post_w* post_w *sg_global_post_d* post_d *sg_global_phc_diameter* phc_diameter *sg_global_phc_exposure* phc_exposure *sg_global_beam_h* beam_h *sg_global_purlin_H* purlin_H *sg_global_new_line_x1* nil *sg_scale_center_x* nil *sg_scale_center_y* nil *sg_old_osmode_global* old_osmode *sg_old_layer_global* old_layer)
                   (command "_.ZOOM" "_E")
                   (setq cmd_str "ZHWBZH_Singsun\n")
                   (vla-SendCommand (vla-get-ActiveDocument (vlax-get-acad-object)) cmd_str)
