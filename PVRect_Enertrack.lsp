@@ -489,6 +489,42 @@
   )
   found_name
 )
+
+;; PHC pile hoop axes and M14 Nut block references; dimensions are specified in mm.
+(defun PVRectEnt_DrawPHCHoops (center_x pile_top_y diameter / hoop1_y hoop2_y hoop1_half hoop2_half nut_inner nut_outer nut_offset blk_ent)
+  (setq hoop1_y (- pile_top_y 1000.0)
+        hoop2_y (- pile_top_y 3500.0)
+        hoop1_half (* (+ (/ diameter 2.0) 70.0 35.0) 5.0)
+        hoop2_half (* (+ (/ diameter 2.0) 70.0 100.0 35.0) 5.0)
+        nut_inner (* (+ (/ diameter 2.0) 70.0) 5.0)
+        nut_outer (* (+ (/ diameter 2.0) 70.0 100.0) 5.0))
+  (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                 (cons 10 (list (- center_x hoop1_half) hoop1_y 0.0))
+                 (cons 11 (list (+ center_x hoop1_half) hoop1_y 0.0))))
+  (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                 (cons 10 (list (- center_x hoop2_half) hoop2_y 0.0))
+                 (cons 11 (list (+ center_x hoop2_half) hoop2_y 0.0))))
+  (if (tblsearch "BLOCK" "Nut")
+    (progn
+      (foreach nut_offset (list (- nut_inner) nut_inner)
+        (entmake (list '(0 . "INSERT") '(2 . "Nut") '(8 . "AXIS")
+                       (cons 10 (list (+ center_x nut_offset) hoop1_y 0.0))
+                       '(41 . 5.0) '(42 . 5.0) '(43 . 5.0) '(50 . 0.0)))
+        (setq blk_ent (entlast))
+        (PVRectEnt_SetBlockVisibility blk_ent "M14")
+      )
+      (foreach nut_offset (list (- nut_inner) nut_inner (- nut_outer) nut_outer)
+        (entmake (list '(0 . "INSERT") '(2 . "Nut") '(8 . "AXIS")
+                       (cons 10 (list (+ center_x nut_offset) hoop2_y 0.0))
+                       '(41 . 5.0) '(42 . 5.0) '(43 . 5.0) '(50 . 0.0)))
+        (setq blk_ent (entlast))
+        (PVRectEnt_SetBlockVisibility blk_ent "M14")
+      )
+    )
+    (prompt "\nPHC hoop axes created, but Nut block definition was not found.")
+  )
+  (princ)
+)
 ;;
 ;; 生成的轴线类型说明：
 ;; - post-axis: 右侧图形中的两根竖向立柱轴线（U1, U2）
@@ -534,7 +570,7 @@
         )
         (setq e_cur_copy (entnext e_cur_copy))
       )
-      (if (> (sslength ss_copy) 0)
+      (if (or (> (sslength ss_copy) 0) (/= *et_global_elev_type* 0))
         (progn
           (setq ss_copy_sf (if *et_global_sf* *et_global_sf* 2.0))
           (setq copy_dist (* (+ 5000.0 (* 2.0 *et_global_h*)) ss_copy_sf))
@@ -744,17 +780,8 @@
                      )
                      (setq pi_idx (1+ pi_idx))
                    )
-                   ;; 贯穿所有短支架线最低点（purlin底部）并两端延长 600 的横向 AXIS 线
-                   (if (and min_axis_x max_axis_x)
-                     (progn
-                       (setvar "CLAYER" "AXIS")
-                       (entmake (list '(0 . "LINE") '(8 . "AXIS")
-                                      (cons 10 (list (- min_axis_x 600.0) purlin_bot_y 0.0))
-                                      (cons 11 (list (+ max_axis_x 600.0) purlin_bot_y 0.0))))
-                       (ssadd (entlast) ss_pv)
-                       (setq *et_elev_cross_ent* (entlast))
-                     )
-                   )
+                   ;; Do not draw a second horizontal axis at purlin_bot_y;
+                   ;; the lower beam-angle-axis is the sole beam axis in the elevation.
                    ;; 将所有生成的图形（含 PV、短支架、长轴线）统一绕总起点一起旋转
                    (if (and *et_global_angle* (not (= *et_global_angle* 0.0)) (> (sslength ss_pv) 0))
                      (command "_.ROTATE" ss_pv "" "_NON" (list pv_start_x pv_start_y 0.0) *et_global_angle*)
@@ -814,7 +841,7 @@
                        ;; 绘制 post-axis #1/#2，C/O-post 时延伸轴线并绘制截面矩形
                        (setvar "CLAYER" "AXIS")
                        (cond
-                         ((or (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)) (= *et_global_elev_type* 3))  ;; C-post: 上延 175, 下延 7500
+                         ((or (= *et_global_elev_type* 1) (= *et_global_elev_type* 3))  ;; C-post: 上延 175, 下延 7500
                           (setq post1_x     U1_rot_x
                                 post2_x     U2_rot_x
                                 post1_top_y  (+ U1_rot_y 175.0)
@@ -841,7 +868,7 @@
                                 post2_top_y U2_rot_y  post2_bot_y lower_top_axis_y)
                          )
                        )
-                       (if (or (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)) (= *et_global_elev_type* 2))
+                       (if (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 2))
                          (progn
                            (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                          (cons 10 (list post1_x post1_top_y 0.0))
@@ -854,7 +881,7 @@
                          )
                        )
                        ;; C-post only: 每根立柱各画两个居中截面矩形
-                       (if (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4))
+                       (if (= *et_global_elev_type* 1)
                          (progn
                            (setvar "CLAYER" "beam")
                            ;; U1 outer rect
@@ -929,7 +956,8 @@
                              *et_scale_center_y* lower_top_axis_y)
                                       
                        (setvar "CLAYER" "DIM")
-                       (if (not (= *et_global_elev_type* 3))
+                       (if (and (not (= *et_global_elev_type* 3))
+                                (not (= *et_global_elev_type* 4)))
                          (command "_.DIMLINEAR" "_NON" (list post1_x lower_top_axis_y 0.0) "_NON" (list post2_x lower_top_axis_y 0.0) "_NON" (list (/ (+ post1_x post2_x) 2.0) (- lower_top_axis_y 2000.0) 0.0))
                        )
 
@@ -1128,7 +1156,8 @@
                                                           (PVRectEnt_GetProjectionDist p2 axis_start_pt axis_end_pt)))))
 
                         ;; 第一道详细标注：相邻点对标注，统一偏移 1200（C-post-single 跳过，无立柱/支撑参考点）
-                        (if (not (= *et_global_elev_type* 3))
+                        (if (and (not (= *et_global_elev_type* 3))
+                                 (not (= *et_global_elev_type* 4)))
                           (progn
                             (setvar "CLAYER" "DIM")
                             (setq dim_offset 1200.0
@@ -1201,8 +1230,8 @@
                           )
                         )
 
-                        ;; 仅 C-post / O-post: 沿 beam-angle-axis 绘制斜向截面矩形（beam 元素）
-                        (if (or (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)) (= *et_global_elev_type* 2) (= *et_global_elev_type* 3))
+                        ;; C-post / O-post / PHC Pile: 沿 beam-angle-axis 绘制斜向截面矩形（beam 元素）
+                        (if (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 2) (= *et_global_elev_type* 3) (= *et_global_elev_type* 4))
                           (progn
                             (if (not (tblsearch "LAYER" "beam")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "beam") (70 . 0) (62 . 4))))
                             (setvar "CLAYER" "beam")
@@ -1226,6 +1255,28 @@
                           )
                         )
 
+                        ;; PHC pile: vertical center axis from ground to above-ground height,
+                        ;; with a pile section centered on the axis and its top aligned to the axis top.
+                        (if (= *et_global_elev_type* 4)
+                          (progn
+                            (setq pile_axis_x (/ (+ ax_L_rx ax_R_rx) 2.0)
+                                  pile_axis_top_y (+ lower_top_axis_y (* *et_global_phc_exposure* 5.0))
+                                  pile_rect_half_w (* *et_global_phc_diameter* 2.5)
+                                  pile_rect_bottom_y (- pile_axis_top_y (* (+ *et_global_phc_exposure* 500.0) 5.0)))
+                            (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                                           (cons 10 (list pile_axis_x lower_top_axis_y 0.0))
+                                           (cons 11 (list pile_axis_x pile_axis_top_y 0.0))))
+                            (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                                           '(8 . "0") '(62 . 8) '(90 . 4) '(70 . 1)
+                                           (list 10 (- pile_axis_x pile_rect_half_w) pile_axis_top_y)
+                                           (list 10 (+ pile_axis_x pile_rect_half_w) pile_axis_top_y)
+                                           (list 10 (+ pile_axis_x pile_rect_half_w) pile_rect_bottom_y)
+                                           (list 10 (- pile_axis_x pile_rect_half_w) pile_rect_bottom_y)))
+                            (PVRectEnt_DrawPHCHoops pile_axis_x pile_axis_top_y *et_global_phc_diameter*)
+                            (setvar "CLAYER" "AXIS")
+                          )
+                        )
+
                         ;; =============================================================================
                         ;; 插入块参照：Nut
                         ;; 共四个，放置于 beam-angle-axis 与两条 post-axis、两条 brace-axis 的相交点
@@ -1235,7 +1286,7 @@
                         (if (tblsearch "BLOCK" block_name)
                           (progn
                             ;; 在 beam-angle-axis 与 post-axis #1 的交点插入块 (U1_rot)，O-post/C-post-single 不插入
-                            (if (not (or (= *et_global_elev_type* 2) (= *et_global_elev_type* 3)))
+                            (if (not (or (= *et_global_elev_type* 2) (= *et_global_elev_type* 3) (= *et_global_elev_type* 4)))
                               (progn
                                 (entmake (list '(0 . "INSERT")
                                                (cons 2 block_name)
@@ -1248,7 +1299,7 @@
                             )
 
                             ;; 在 beam-angle-axis 与 post-axis #2 的交点插入块 (U2_rot)，O-post/C-post-single 不插入
-                            (if (not (or (= *et_global_elev_type* 2) (= *et_global_elev_type* 3)))
+                            (if (not (or (= *et_global_elev_type* 2) (= *et_global_elev_type* 3) (= *et_global_elev_type* 4)))
                               (progn
                                 (entmake (list '(0 . "INSERT")
                                                (cons 2 block_name)
@@ -1260,8 +1311,9 @@
                               )
                             )
 
-                            ;; 在 beam-angle-axis 与 brace-axis #1 的交点插入块 (brace_int1)，C-post-single 不插入
-                            (if (not (= *et_global_elev_type* 3))
+                            ;; 在 beam-angle-axis 与 brace-axis #1 的交点插入块 (brace_int1)，C-post-single / PHC Pile 不插入
+                            (if (and (not (= *et_global_elev_type* 3))
+                                     (not (= *et_global_elev_type* 4)))
                               (progn
                                 (entmake (list '(0 . "INSERT")
                                                (cons 2 block_name)
@@ -1273,8 +1325,9 @@
                               )
                             )
 
-                            ;; 在 beam-angle-axis 与 brace-axis #2 的交点插入块 (brace_int2)，C-post-single 不插入
-                            (if (not (= *et_global_elev_type* 3))
+                            ;; 在 beam-angle-axis 与 brace-axis #2 的交点插入块 (brace_int2)，C-post-single / PHC Pile 不插入
+                            (if (and (not (= *et_global_elev_type* 3))
+                                     (not (= *et_global_elev_type* 4)))
                               (progn
                                 (entmake (list '(0 . "INSERT")
                                                (cons 2 block_name)
@@ -1368,7 +1421,7 @@
                         ;; 终点坐标使用前面计算的 brace_int1
                         (setq line_end_x brace_int1_x  line_end_y brace_int1_y)
                         ;; 创建直线
-                        (if (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4))
+                        (if (= *et_global_elev_type* 1)
                           (progn
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list (+ line_start_x (+ post_half_w1 250.0)) line_start_y 0.0))
@@ -1405,7 +1458,7 @@
                         ;; 终点坐标使用前面计算的 brace_int2
                         (setq line_end_r_x brace_int2_x  line_end_r_y brace_int2_y)
                         ;; 创建直线
-                        (if (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4))
+                        (if (= *et_global_elev_type* 1)
                           (progn
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list (- line_start_r_x (+ post_half_w1 250.0)) line_start_r_y 0.0))
@@ -1439,7 +1492,7 @@
                         ;; Inward offset = conn_half_x - 150 CAD
                         ;; Y outer 100 mm -> half 250 CAD;  Y inner 94 mm -> half 235 CAD
                         ;; Nuts: ±25 mm = ±125 CAD on Y; w/2+50 mm = post_half_w1+250 CAD outboard on X
-                        (if (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4))
+                        (if (= *et_global_elev_type* 1)
                           (progn
                             (setq conn_half_x (/ (+ post_half_w1 550.0) 2.0)
                                   conn_cx_l   (+ line_start_x   (- conn_half_x 150.0))
@@ -1604,7 +1657,7 @@
                         )
                         ;; C/O-post: angle label between beam-axis and DIM horizontal line
                         ;; 角度为 0 时梁轴与地面平行，无交点可标注（且下面要除以 sin），跳过
-                        (if (and (or (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)) (= *et_global_elev_type* 2) (= *et_global_elev_type* 3))
+                        (if (and (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 2) (= *et_global_elev_type* 3))
                                  (> (abs (sin ang_rad)) 1e-6))
                           (progn
                             (setvar "CLAYER" "DIM")
@@ -1644,6 +1697,8 @@
                                             (- *et_opost_screw_pile_bot_y* 2000.0))
                                            ((= *et_global_elev_type* 3)
                                             (- lower_top_axis_y 9500.0))
+                                           ((= *et_global_elev_type* 4)
+                                            (- post1_bot_y 3000.0))
                                            (t
                                             (- post1_bot_y 2000.0)))
                          elev_t1_str     "PV Mount Structure Elevation layout")
@@ -2007,7 +2062,7 @@
   )
 
   ;; Extend visible brace-axis lines both ends by 30mm (150 CAD units)
-  (if (and *et_brace_vis_ents* (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)))
+  (if (and *et_brace_vis_ents* (= *et_global_elev_type* 1))
     (progn
       (setq brace_ext_cad (* 30.0 5.0))
       (foreach en *et_brace_vis_ents*
@@ -2043,7 +2098,7 @@
   )
 
   ;; Draw brace-section rectangles (outer 50mm, inner 30mm wide) centered on each brace-axis line
-  (if (and *et_brace_vis_ents* (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)))
+  (if (and *et_brace_vis_ents* (= *et_global_elev_type* 1))
     (progn
       (setq brace_hw1 (* 25.0 5.0)
             brace_hw2 (* 15.0 5.0))
@@ -2189,7 +2244,7 @@
   )
 
   ;; Label brace-axis length with TSSD_20_100, 185mm below the axis line
-  (if (and *et_brace_vis_ents* (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)))
+  (if (and *et_brace_vis_ents* (= *et_global_elev_type* 1))
     (progn
       (setvar "CLAYER" "DIM")
       (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
@@ -2229,7 +2284,7 @@
   )
 
   ;; Label post-axis length with TSSD_20_100, 185mm outside the drawing
-  (if (and *et_elev_post_ents* (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)))
+  (if (and *et_elev_post_ents* (= *et_global_elev_type* 1))
     (progn
       (setvar "CLAYER" "DIM")
       (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
@@ -2262,7 +2317,7 @@
   )
 
   ;; Label post-axis length BELOW the DIM horizontal line, 185mm inside the drawing
-  (if (and *et_elev_post_ents* lower_top_axis_y (or (= *et_global_elev_type* 1) (= *et_global_elev_type* 4)))
+  (if (and *et_elev_post_ents* lower_top_axis_y (= *et_global_elev_type* 1))
     (progn
       (setvar "CLAYER" "DIM")
       (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
@@ -2951,9 +3006,11 @@
               (setq *et_old_osmode_global* old_osmode *et_old_layer_global* old_layer)
               (setvar "OSMODE" 0)
               
-              (if (> zn 0)
+              (if (= elev_type 0)
                 (progn
-                  (setq vx_list (list))
+                  (if (> zn 0)
+                    (progn
+                      (setq vx_list (list))
                   (setq array_width (+ (* m w_eval) (* (1- m) gap)) center_x (+ (car pt) (/ array_width 2.0)))
                   (cond 
                     ((= zn 1) (setq vert_axes_width 0.0))
@@ -3203,7 +3260,68 @@
                   (setq *et_left_dims_global* (append *et_left_dims_global* (list (entlast))))
                 )
               )
-              
+              )
+                (progn
+                  ;; Elevation mode: compute PostFix references without drawing/erasing a plan view.
+                  (setq array_width (+ (* m w_eval) (* (1- m) gap))
+                        center_x (+ (car pt) (/ array_width 2.0)))
+                  (cond
+                    ((= zn 1) (setq vert_axes_width 0.0))
+                    ((= zn 2) (setq vert_axes_width zde_eval))
+                    (t (setq vert_axes_width (+ (* 2.0 zde_eval) (* (- zn 3) zd_eval))))
+                  )
+                  (setq start_vx (- center_x (/ vert_axes_width 2.0))
+                        top_y (+ (cadr pt) (* n h_eval) (* (1- n) gap))
+                        bottom_y (cadr pt)
+                        startX (- (car pt) extX)
+                        endX (+ (car pt) (* (1- m) (+ w_eval gap)) w_eval extX)
+                        vx_list nil
+                        vi 0
+                        cur_vx start_vx)
+                  (while (< vi zn)
+                    (setq vx_list (append vx_list (list cur_vx)))
+                    (if (< vi (1- zn))
+                      (setq cur_vx (+ cur_vx (if (or (= vi 0) (= vi (- zn 2))) zde_eval zd_eval)))
+                    )
+                    (setq vi (1+ vi))
+                  )
+                  (setq *et_global_axis_y_list* nil
+                        *et_purlin_axis_ents* nil
+                        *et_top_dims_global* nil
+                        *et_left_dims_global* nil
+                        ri 0)
+                  (while (< ri n)
+                    (setq axis_mid (+ (cadr pt) (* ri (+ h_eval gap)) (/ h_eval 2.0))
+                          axis_y1 (+ axis_mid axis_gap)
+                          axis_y2 (- axis_mid axis_gap))
+                    (setq *et_global_axis_y_list* (append *et_global_axis_y_list* (list axis_y2)))
+                    (if (= nop 3)
+                      (setq *et_global_axis_y_list* (append *et_global_axis_y_list* (list axis_mid)))
+                    )
+                    (setq *et_global_axis_y_list* (append *et_global_axis_y_list* (list axis_y1))
+                          ri (1+ ri))
+                  )
+                  (setq pile_center_y (/ (+ bottom_y top_y) 2.0)
+                        pile_ang_r (* angle_val (/ pi 180.0))
+                        pile_span_mm (+ (* (1- n) (+ h 20.0)) hole)
+                        pile_w_phys (* (fix (/ (* (- pile_span_mm 660.0) (cos pile_ang_r)) 100.0)) 100.0))
+                  (if (and (= piles 2) (<= pile_w_phys 0.0))
+                    (setq piles 1)
+                  )
+                  (if (= piles 2)
+                    (setq pile_half (* (/ (/ pile_w_phys (cos pile_ang_r)) 2.0) SF)
+                          pile_y_list (list (- pile_center_y pile_half) (+ pile_center_y pile_half)))
+                    (setq pile_y_list (list pile_center_y))
+                  )
+                  (setq dim_x_vert (- startX (* 300.0 SF))
+                        dim_x2_vert dim_x_vert
+                        dim_y (+ top_y (* 600.0 SF))
+                        dim_y2 (+ dim_y (* 600.0 SF))
+                        axis_y2 (- (+ (cadr pt) (* (1- n) (+ h_eval gap)) (/ h_eval 2.0)) axis_gap)
+                        bottom_axis_ent T)
+                )
+              )
+
               (if bottom_axis_ent
                 (progn
                   (princ "\n>>> Post-processing...")
