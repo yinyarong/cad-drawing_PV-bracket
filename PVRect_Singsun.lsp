@@ -865,7 +865,7 @@
                          ss_pv (ssadd)
                          min_axis_x nil
                          max_axis_x nil)
-                   (setq *sg_elev_purlin_ents* nil *sg_elev_cross_ent* nil *sg_elev_beam_ent* nil *sg_elev_post_ents* nil *sg_elev_brace_ents* nil *sg_elev_phc_crossbeam_ents* nil *sg_elev_phc_hoop_ents* nil *sg_elev_phc_column_ents* nil *sg_brace_track_ents* nil *sg_brace_vis_ents* nil *sg_opost_brace_src_ents* nil *sg_opost_screw_pile_bot_y* nil)
+                   (setq *sg_elev_purlin_ents* nil *sg_elev_cross_ent* nil *sg_elev_beam_ent* nil *sg_elev_post_ents* nil *sg_elev_brace_ents* nil *sg_elev_phc_crossbeam_ents* nil *sg_elev_phc_hoop_ents* nil *sg_elev_phc_column_ents* nil *sg_elev_phc_pile_ents* nil *sg_brace_track_ents* nil *sg_brace_vis_ents* nil *sg_opost_brace_src_ents* nil *sg_opost_screw_pile_bot_y* nil)
                    (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
                    (while (< pi_idx *sg_global_n*)
                      (setq cur_pv_x (+ pv_start_x (* pi_idx (* (+ *sg_global_h* 20.0) 5.0)))
@@ -1495,7 +1495,7 @@
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list pile_axis_x lower_top_axis_y 0.0))
                                            (cons 11 (list pile_axis_x pile_axis_top_y 0.0))))
-                            (setq *sg_elev_phc_column_ents* (cons (entlast) *sg_elev_phc_column_ents*))
+                            (setq *sg_elev_phc_pile_ents* (cons (entlast) *sg_elev_phc_pile_ents*))
                             (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                                            '(8 . "0") '(62 . 8) '(90 . 4) '(70 . 1)
                                            (list 10 (- pile_axis_x pile_rect_half_w) pile_axis_top_y)
@@ -2058,7 +2058,8 @@
       (if (not (tblsearch "LAYER" "02Beam"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "02Beam")      (70 . 0) (62 . 4))))
       (if (not (tblsearch "LAYER" "03Brace"))     (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "03Brace")     (70 . 0) (62 . 1))))
       (if (not (tblsearch "LAYER" "04Column"))    (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "04Column")    (70 . 0) (62 . 7))))
-      (if (not (tblsearch "LAYER" "05Hoop"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "05Hoop")      (70 . 0) (62 . 2))))
+      (if (not (tblsearch "LAYER" "05Loop"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "05Loop")      (70 . 0) (62 . 2))))
+      (if (not (tblsearch "LAYER" "06Pile"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "06Pile")      (70 . 0) (62 . 6))))
 
       ;; == 1. PURLIN short lines → 01Purlin-01 / 01Purlin-02 (right half / left half),
       ;;       each half split by height into ...up / ...down ==
@@ -2117,9 +2118,6 @@
         (progn
           (setq ss_beam (ssadd))
           (ssadd *sg_elev_beam_ent* ss_beam)
-          (foreach en *sg_elev_phc_crossbeam_ents*
-            (if (and en (entget en)) (ssadd en ss_beam))
-          )
           (setq ent_before (entlast))
           (command "_.COPY" ss_beam "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
           (setq en_new (entnext ent_before))
@@ -2243,7 +2241,30 @@
         (prompt "\n>>> No brace-axis lines tracked, skipping 03Brace copy.")
       )
 
-      ;; PHC hoop axes → 05Hoop in the reduced elevation thumbnail.
+      ;; PHC crossbeam above hoop1 is a brace-type line in the reduced thumbnail.
+      (if *sg_elev_phc_crossbeam_ents*
+        (progn
+          (setq ss_brace (ssadd))
+          (foreach en *sg_elev_phc_crossbeam_ents*
+            (if (and en (entget en)) (ssadd en ss_brace))
+          )
+          (if (> (sslength ss_brace) 0)
+            (progn
+              (setq ent_before (entlast))
+              (command "_.COPY" ss_brace "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+              (setq en_new (entnext ent_before))
+              (while en_new
+                (setq edata (entget en_new))
+                (entmod (subst (cons 8 "03Brace") (assoc 8 edata) edata))
+                (ssadd en_new ss_scaled_all)
+                (setq en_new (entnext en_new))
+              )
+            )
+          )
+        )
+      )
+
+      ;; PHC hoop axes → 05Loop in the reduced elevation thumbnail.
       (if *sg_elev_phc_hoop_ents*
         (progn
           (setq ss_brace (ssadd))
@@ -2257,7 +2278,30 @@
               (setq en_new (entnext ent_before))
               (while en_new
                 (setq edata (entget en_new))
-                (entmod (subst (cons 8 "05Hoop") (assoc 8 edata) edata))
+                (entmod (subst (cons 8 "05Loop") (assoc 8 edata) edata))
+                (ssadd en_new ss_scaled_all)
+                (setq en_new (entnext en_new))
+              )
+            )
+          )
+        )
+      )
+
+      ;; PHC pile center axis → 06Pile in the reduced elevation thumbnail.
+      (if *sg_elev_phc_pile_ents*
+        (progn
+          (setq ss_brace (ssadd))
+          (foreach en *sg_elev_phc_pile_ents*
+            (if (and en (entget en)) (ssadd en ss_brace))
+          )
+          (if (> (sslength ss_brace) 0)
+            (progn
+              (setq ent_before (entlast))
+              (command "_.COPY" ss_brace "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+              (setq en_new (entnext ent_before))
+              (while en_new
+                (setq edata (entget en_new))
+                (entmod (subst (cons 8 "06Pile") (assoc 8 edata) edata))
                 (ssadd en_new ss_scaled_all)
                 (setq en_new (entnext en_new))
               )
@@ -2273,6 +2317,9 @@
                           (rtos (car scale_center) 2 0) "," (rtos (cadr scale_center) 2 0) ")..."))
           (command "_.SCALE" ss_scaled_all "" "_NON" scale_center 0.2)
           (prompt "\n>>> Scale-down completed.")
+          ;; PHC thumbnail members meet cleanly at line intersections; keep pile bottom at ground.
+          (if (= *sg_global_elev_type* 4)
+            (PVRectSgs_ClipPHCThumbnail ss_scaled_all))
           ;; Extend/clip post-axis copies to exact beam-angle-axis intersection + ground
           ;; (skipped for C-post-single: scale already places endpoints exactly)
           (if (and post_copy_list lower_top_axis_y U1_rot_y U2_rot_y
@@ -2719,6 +2766,12 @@
       (prompt "\n>>> O-post post-axis length labels added (TSSD_20_100, 185mm outside).")
     )
   )
+
+  ;; For elevation output, center the complete generated drawing on the picked point.
+  (if (and (/= *sg_global_elev_type* 0) *sg_insert_center_pt*)
+    (PVRectSgs_CenterGeneratedAtPoint *sg_first_ent_global* *sg_insert_center_pt*)
+  )
+  (setq *sg_insert_center_pt* nil)
 
   ;; 清理全局变量（在复制轴线之后执行）
   (setq *sg_global_h* nil *sg_global_hole* nil *sg_global_sf* nil *sg_title_ents_list* nil *sg_left_dims_global* nil *sg_top_dims_global* nil *sg_upper_only_ents* nil *sg_global_axis_y_list* nil *sg_global_startX* nil *sg_global_endX* nil *sg_global_dim_x_vert* nil *sg_global_pt_x* nil *sg_global_w_eval* nil *sg_global_gap* nil *sg_global_start_vx* nil *sg_global_zd_eval* nil *sg_global_dim_y* nil *sg_global_dim_y2* nil *sg_global_top_y* nil *sg_global_axis_y2_baseline* nil *sg_global_vx_list* nil *sg_global_bottom_y* nil *sg_global_bottom_dim_y* nil *sg_global_clearance* nil *sg_global_angle* nil *sg_global_nop* nil *sg_global_elev_type* nil *sg_global_post_w* nil *sg_global_post_d* nil *sg_global_beam_h* nil *sg_global_purlin_H* nil *sg_global_new_line_x1* nil *sg_scale_center_x* nil *sg_scale_center_y* nil *sg_elev_purlin_ents* nil *sg_elev_cross_ent* nil *sg_elev_beam_ent* nil *sg_elev_post_ents* nil *sg_elev_brace_ents* nil *sg_brace_track_ents* nil *sg_brace_vis_ents* nil *sg_opost_brace_src_ents* nil *sg_opost_screw_pile_bot_y* nil)
@@ -3284,7 +3337,8 @@
           (setq pt (getpoint "\nSelect insertion point: "))
           (if pt
             (progn
-              (setq *sg_first_ent_global* (entlast))
+              (setq *sg_first_ent_global* (entlast)
+                    *sg_insert_center_pt* (if (/= elev_type 0) (trans pt 1 0) nil))
               (command "_.-LAYER" "_UNLOCK" "purlin,beam" "")
               
               (if (not (tblsearch "LAYER" "AXIS")) (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "AXIS") (70 . 0) (62 . 1))))
@@ -3606,6 +3660,111 @@
           )
         )
         (princ "\n>>> Invalid input.")
+      )
+    )
+  )
+  (princ)
+)
+
+;; Trim overshooting PHC thumbnail axes at their nearest intersections.
+;; The pile axis (06Pile) is deliberately excluded so its lower endpoint remains on ground.
+(defun PVRectSgs_ClipPHCThumbnail (ss / i en ed lay p10 p11 records rec other ip
+                                        c10 c11 best10 best11 len d10 d11 q10 q11 new10 new11)
+  (setq records nil i 0)
+  (while (< i (sslength ss))
+    (setq en (ssname ss i)
+          ed (entget en)
+          lay (cdr (assoc 8 ed)))
+    (if (and (= (cdr (assoc 0 ed)) "LINE")
+             (member lay '("02Beam" "03Brace" "04Column" "05Loop")))
+      (setq records (cons (list en (cdr (assoc 10 ed)) (cdr (assoc 11 ed))) records))
+    )
+    (setq i (1+ i))
+  )
+  (foreach rec records
+    (setq c10 nil c11 nil
+          len (distance (cadr rec) (caddr rec)))
+    (foreach other records
+      (if (/= (car rec) (car other))
+        (progn
+          (setq ip (inters (cadr rec) (caddr rec) (cadr other) (caddr other) T))
+          (if ip
+            (setq c10 (cons (list (distance (cadr rec) ip) ip) c10)
+                  c11 (cons (list (distance (caddr rec) ip) ip) c11))
+          )
+        )
+      )
+    )
+    (setq best10 (if c10 (car (vl-sort c10 '(lambda (a b) (< (car a) (car b))))) nil)
+          best11 (if c11 (car (vl-sort c11 '(lambda (a b) (< (car a) (car b))))) nil)
+          d10 (if best10 (car best10) 0.0)
+          d11 (if best11 (car best11) 0.0)
+          q10 (if best10 (cadr best10) (cadr rec))
+          q11 (if best11 (cadr best11) (caddr rec))
+          new10 (if (and best10 (> d10 0.000001)) q10 (cadr rec))
+          new11 (if (and best11 (> d11 0.000001)) q11 (caddr rec)))
+    ;; If only one distinct crossing is available, trim the nearer overhanging end
+    ;; instead of discarding the intersection and leaving the member at full length.
+    (if (and best10 best11
+             (or (equal q10 q11 0.000001) (>= (+ d10 d11) (- len 0.000001))))
+      (if (<= d10 d11)
+        (setq new10 (if (> d10 0.000001) q10 (cadr rec))
+              new11 (caddr rec))
+        (setq new10 (cadr rec)
+              new11 (if (> d11 0.000001) q11 (caddr rec)))
+      )
+    )
+    (if (or (not (equal new10 (cadr rec) 0.000001))
+            (not (equal new11 (caddr rec) 0.000001)))
+      (progn
+        (setq ed (entget (car rec)))
+        (entmod (subst (cons 10 new10) (assoc 10 ed) ed))
+        (setq ed (entget (car rec)))
+        (entmod (subst (cons 11 new11) (assoc 11 ed) ed))
+      )
+    )
+  )
+  (princ)
+)
+
+;; Move all entities created since first_ent so their aggregate extents center
+;; coincides with insertion_pt. Used only for elevation output.
+(defun PVRectSgs_CenterGeneratedAtPoint (first_ent insertion_pt / en obj mn mx mn_list mx_list objects
+                                                   min_x min_y min_z max_x max_y max_z center delta)
+  (setq en (if first_ent (entnext first_ent) (entnext nil))
+        objects nil)
+  (while en
+    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list en)))
+    (if (not (vl-catch-all-error-p obj))
+      (progn
+        (setq mn nil mx nil)
+        (if (not (vl-catch-all-error-p
+                   (vl-catch-all-apply 'vla-getboundingbox (list obj 'mn 'mx))))
+          (progn
+            (setq mn_list (vlax-safearray->list mn)
+                  mx_list (vlax-safearray->list mx)
+                  objects (cons obj objects)
+                  min_x (if min_x (min min_x (car mn_list)) (car mn_list))
+                  min_y (if min_y (min min_y (cadr mn_list)) (cadr mn_list))
+                  min_z (if min_z (min min_z (caddr mn_list)) (caddr mn_list))
+                  max_x (if max_x (max max_x (car mx_list)) (car mx_list))
+                  max_y (if max_y (max max_y (cadr mx_list)) (cadr mx_list))
+                  max_z (if max_z (max max_z (caddr mx_list)) (caddr mx_list)))
+          )
+        )
+      )
+    )
+    (setq en (entnext en))
+  )
+  (if objects
+    (progn
+      (setq center (list (/ (+ min_x max_x) 2.0)
+                         (/ (+ min_y max_y) 2.0)
+                         (/ (+ min_z max_z) 2.0))
+            delta (mapcar '- insertion_pt center))
+      (foreach obj objects
+        (vl-catch-all-apply 'vla-move
+          (list obj (vlax-3d-point '(0.0 0.0 0.0)) (vlax-3d-point delta)))
       )
     )
   )
