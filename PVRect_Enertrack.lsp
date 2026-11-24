@@ -491,8 +491,11 @@
 )
 
 ;; PHC pile hoop axes and M14 Nut block references; dimensions are specified in mm.
-(defun PVRectEnt_DrawPHCHoops (center_x pile_top_y diameter beam_x1 beam_y1 beam_x2 beam_y2 post_width brace_width / hoop1_y hoop2_y hoop1_half hoop2_half hoop_half_width nut_inner nut_outer nut_offset blk_ent post_start_y post_x post_intersection_y post_end_y post_half_width brace_side brace_start_pt brace_end_pt brace_nut_pts brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_hl brace_hw brace_perp_x brace_perp_y brace_ext_start brace_ext_end)
-  (setq hoop1_y (- pile_top_y 1000.0)
+(defun PVRectEnt_DrawPHCHoops (center_x pile_top_y diameter beam_x1 beam_y1 beam_x2 beam_y2 post_width brace_width / hoop1_y hoop2_y hoop1_half hoop2_half hoop_half_width nut_inner nut_outer nut_offset blk_ent post_start_y post_x post_intersection_y post_end_y post_half_width brace_side brace_start_pt brace_end_pt brace_nut_pts brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_hl brace_hw brace_perp_x brace_perp_y brace_ext_start brace_ext_end crossbeam_y crossbeam_half crossbeam_half_width)
+  (setq crossbeam_y (+ pile_top_y 150.0)
+        crossbeam_half (* (+ (/ diameter 2.0) 70.0 35.0) 5.0)
+        crossbeam_half_width 150.0
+        hoop1_y (- pile_top_y 1000.0)
         hoop2_y (- pile_top_y 3500.0)
         hoop1_half (* (+ (/ diameter 2.0) 70.0 35.0) 5.0)
         hoop2_half (* (+ (/ diameter 2.0) 70.0 100.0 35.0) 5.0)
@@ -503,12 +506,25 @@
         post_half_width (* post_width 2.5)
         brace_hw (* brace_width 2.5)
         brace_nut_pts nil)
+  ;; Crossbeam axis is 30 mm above the pile top; its 60 mm section is centered on the axis.
+  (entmake (list '(0 . "LINE") '(8 . "AXIS")
+                 (cons 10 (list (- center_x crossbeam_half) crossbeam_y 0.0))
+                 (cons 11 (list (+ center_x crossbeam_half) crossbeam_y 0.0))))
+  (setq *et_elev_phc_crossbeam_ents* (cons (entlast) *et_elev_phc_crossbeam_ents*))
+  (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
+                 '(8 . "beam") '(90 . 4) '(70 . 1)
+                 (list 10 (- center_x crossbeam_half) (+ crossbeam_y crossbeam_half_width))
+                 (list 10 (+ center_x crossbeam_half) (+ crossbeam_y crossbeam_half_width))
+                 (list 10 (+ center_x crossbeam_half) (- crossbeam_y crossbeam_half_width))
+                 (list 10 (- center_x crossbeam_half) (- crossbeam_y crossbeam_half_width))))
   (entmake (list '(0 . "LINE") '(8 . "AXIS")
                  (cons 10 (list (- center_x hoop1_half) hoop1_y 0.0))
                  (cons 11 (list (+ center_x hoop1_half) hoop1_y 0.0))))
+  (setq *et_elev_phc_hoop_ents* (cons (entlast) *et_elev_phc_hoop_ents*))
   (entmake (list '(0 . "LINE") '(8 . "AXIS")
                  (cons 10 (list (- center_x hoop2_half) hoop2_y 0.0))
                  (cons 11 (list (+ center_x hoop2_half) hoop2_y 0.0))))
+  (setq *et_elev_phc_hoop_ents* (cons (entlast) *et_elev_phc_hoop_ents*))
   ;; 80 mm wide hoop section rectangles, centered on and matching each hoop axis length.
   (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                  '(8 . "0") '(90 . 4) '(70 . 1)
@@ -533,6 +549,7 @@
     (entmake (list '(0 . "LINE") '(8 . "AXIS")
                    (cons 10 (list post_x post_start_y 0.0))
                    (cons 11 (list post_x post_end_y 0.0))))
+    (setq *et_elev_phc_column_ents* (cons (entlast) *et_elev_phc_column_ents*))
     ;; Post section rectangle is centered on its axis and uses the editable Post Width.
     (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                    '(8 . "0") '(62 . 2) '(90 . 4) '(70 . 1)
@@ -583,6 +600,7 @@
         (entmake (list '(0 . "LINE") '(8 . "AXIS")
                        (cons 10 (list (car brace_ext_start) (cadr brace_ext_start) 0.0))
                        (cons 11 (list (car brace_ext_end) (cadr brace_ext_end) 0.0))))
+        (setq *et_elev_brace_ents* (cons (entlast) *et_elev_brace_ents*))
         (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                        '(8 . "beam") '(90 . 4) '(70 . 1)
                        (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x brace_hw))
@@ -631,7 +649,7 @@
 ;; - brace-axis: 连接 post-axis 与 beam-angle-axis 的斜向连接轴线
 ;; =============================================================================
 
-(defun PVRectEnt_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt purlin_lo purlin_hi cnt_lo cnt_hi scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block ax_line_len ax_r ax_cy ax_th ax_dim_y ax_n ax_vx_prev ax_vx_next a1 a2 al ang_align_x ang_rad ar ax_l_ox ax_l_oy ax_l_rot ax_l_rx ax_l_ry ax_r_ox ax_r_oy ax_r_rot ax_r_rx ax_r_ry axis_angle axis_end_pt axis_start_pt axis_total_len axis_x1 axis_x2 axis_x_mid beam_dy_per_dx beam_half_h beam_half_h2 block_name brace_int1_x brace_int1_y brace_int2_x brace_int2_y cps_bdim_pos_l cps_bdim_pos_r cps_bext_l_bot cps_bext_l_top cps_bext_r_bot cps_bext_r_top cps_blp1 cps_blp2 cps_blp3 cps_blp4 cps_bperp_l cps_bperp_r cps_brace_bot_y cps_brace_top_l cps_brace_top_r cps_brace_xoff cps_brp1 cps_brp2 cps_brp3 cps_brp4 cps_hw_new cps_hy_new cps_hy_new2 cps_nut_xoff cps_post_bot cps_post_hw1 cps_post_hw2 cps_post_top cps_post_x cps_post_y cps_split_offset cur_pv_x cy dim_loc_x dim_loc_y dim_loc_y2 dim_nx dim_ny dim_offset e_elev elev_center_x elev_line_bot_y elev_line_top_y elev_line_x1 elev_line_x2 elev_t1_maxx elev_t1_minx elev_t1_str elev_t1_width elev_title_y en half_d key_points l_span line_end_pt line_end_r_pt line_end_r_x line_end_r_y line_end_x line_end_y line_start_r_x line_start_r_y line_start_x line_start_y max_axis_x mid_orig_x mid_orig_y mid_x mid_y min_axis_x my_breaks new_line_x1 new_line_x2 next_pv_x obolt_offset_cad offset_dist opost_ang_arc_x opost_ang_arc_y opost_ang_t opost_ang_vx opost_base_dist opost_post_x1 opost_post_x2 opost_tri_dist_cad opost_tri_top_y1 opost_tri_top_y2 p1 p2 pi_idx post1_x post2_x pv_p1_x pv_p1_y pv_p2_x pv_p2_y pv_start_x pv_start_y r1 r2 rect_half_h rect_half_w rl rr screw_pile_block seg1_loc_x seg1_loc_y seg1_mid_x seg1_mid_y seg2_loc_x seg2_loc_y seg2_mid_x seg2_mid_y seg3_loc_x seg3_loc_y seg3_mid_x seg3_mid_y seg4_loc_x seg4_loc_y seg4_mid_x seg4_mid_y sorted_points sp_vla ss_obs ss_pv target_w_cad target_w_phys tb_elev total_dim_loc_x total_dim_loc_y total_dim_offset total_mid_x total_mid_y tri_conn_block u1_clamp_y u1_orig_x u1_rot u1_rot_x u1_rot_y u2_clamp_y u2_orig_x u2_rot u2_rot_x u2_rot_y w_phys_max sp_bbmin sp_bbmax)
+(defun PVRectEnt_PostFix ( / e_cur ss idx ent err minpt maxpt pt_min global_min_y title_y t1_str e_t1 tb t1_width t1_minX t1_maxX gap_ext line_x1 line_x2 line_top_y line_bot_y t2_x ss_copy e_cur_copy edata ss_copy_sf copy_dist y_a y_b i vx_list bottom_y bottom_dim_y lower_top_axis_y lower_top_dim_y lower_bottom_axis_y lower_bottom_dim_y post1_top_y post1_bot_y post2_top_y post2_bot_y post_half_w1 post_half_w2 purlin_H_cad purlin_bot_y beam_axis_y ss_scaled_all ss_purlin ss_beam ss_post ss_brace ss_new_purlin ent_before en_new purlin_xlist split_idx k px tgt purlin_lo purlin_hi cnt_lo cnt_hi scale_center axis_copy_dist ss_del e_del postfix_start_ent post_copy_list beam_y_scaled post_bot_clamp post_top_clamp ss_bt pt10 pt11 y10 y11 new_y10 new_y11 U1_top_clamp U2_top_clamp sorted_posts clip_pairs pair brace_ext_cad brace_dx brace_dy brace_len brace_nx brace_ny brace_mid_x brace_mid_y brace_perp_x brace_perp_y brace_hl brace_hw1 brace_hw2 dim_perp_x dim_perp_y brace_dim_x brace_dim_y post_mid_y post_dim_x brace_all_info cps_copy_cx blp top_code bot_code top_pt bot_pt new_top new_bot conn_half_x conn_cx_l conn_cx_r obrace_conn_block ax_line_len ax_r ax_cy ax_th ax_dim_y ax_n ax_vx_prev ax_vx_next a1 a2 al ang_align_x ang_rad ar ax_l_ox ax_l_oy ax_l_rot ax_l_rx ax_l_ry ax_r_ox ax_r_oy ax_r_rot ax_r_rx ax_r_ry axis_angle axis_end_pt axis_start_pt axis_total_len axis_x1 axis_x2 axis_x_mid beam_dy_per_dx beam_half_h beam_half_h2 block_name brace_int1_x brace_int1_y brace_int2_x brace_int2_y cps_bdim_pos_l cps_bdim_pos_r cps_bext_l_bot cps_bext_l_top cps_bext_r_bot cps_bext_r_top cps_blp1 cps_blp2 cps_blp3 cps_blp4 cps_bperp_l cps_bperp_r cps_brace_bot_y cps_brace_top_l cps_brace_top_r cps_brace_xoff cps_brp1 cps_brp2 cps_brp3 cps_brp4 cps_hw_new cps_hy_new cps_hy_new2 cps_nut_xoff cps_post_bot cps_post_hw1 cps_post_hw2 cps_post_top cps_post_x cps_post_y cps_split_offset cur_pv_x cy dim_loc_x dim_loc_y dim_loc_y2 dim_nx dim_ny dim_offset e_elev elev_center_x elev_line_bot_y elev_line_top_y elev_line_x1 elev_line_x2 elev_t1_maxx elev_t1_minx elev_t1_str elev_t1_width elev_title_y en half_d key_points l_span line_end_pt line_end_r_pt line_end_r_x line_end_r_y line_end_x line_end_y line_start_r_x line_start_r_y line_start_x line_start_y max_axis_x mid_orig_x mid_orig_y mid_x mid_y min_axis_x my_breaks new_line_x1 new_line_x2 next_pv_x obolt_offset_cad offset_dist opost_ang_arc_x opost_ang_arc_y opost_ang_t opost_ang_vx opost_base_dist opost_post_x1 opost_post_x2 opost_tri_dist_cad opost_tri_top_y1 opost_tri_top_y2 p1 p2 pi_idx post1_x post2_x pv_p1_x pv_p1_y pv_p2_x pv_p2_y pv_start_x pv_start_y r1 r2 rect_half_h rect_half_w rl rr screw_pile_block seg1_loc_x seg1_loc_y seg1_mid_x seg1_mid_y seg2_loc_x seg2_loc_y seg2_mid_x seg2_mid_y seg3_loc_x seg3_loc_y seg3_mid_x seg3_mid_y seg4_loc_x seg4_loc_y seg4_mid_x seg4_mid_y sorted_points sp_vla ss_obs ss_pv target_w_cad target_w_phys tb_elev total_dim_loc_x total_dim_loc_y total_dim_offset total_mid_x total_mid_y tri_conn_block u1_clamp_y u1_orig_x u1_rot u1_rot_x u1_rot_y u2_clamp_y u2_orig_x u2_rot u2_rot_x u2_rot_y w_phys_max sp_bbmin sp_bbmax phc_nut_offset phc_post_left_x phc_post_left_y phc_post_right_x phc_post_right_y)
   ;; For C/O-post: capture last entity before PostFix draws anything.
   ;; This boundary covers the main array AND any ZHWBZH_Enertrack-generated entities.
   (setq postfix_start_ent (if (not (= *et_global_elev_type* 0)) (entlast) nil))
@@ -753,7 +771,7 @@
                          ss_pv (ssadd)
                          min_axis_x nil
                          max_axis_x nil)
-                   (setq *et_elev_purlin_ents* nil *et_elev_cross_ent* nil *et_elev_beam_ent* nil *et_elev_post_ents* nil *et_elev_brace_ents* nil *et_brace_track_ents* nil *et_brace_vis_ents* nil *et_opost_brace_src_ents* nil *et_opost_screw_pile_bot_y* nil)
+                   (setq *et_elev_purlin_ents* nil *et_elev_cross_ent* nil *et_elev_beam_ent* nil *et_elev_post_ents* nil *et_elev_brace_ents* nil *et_elev_phc_crossbeam_ents* nil *et_elev_phc_hoop_ents* nil *et_elev_phc_column_ents* nil *et_brace_track_ents* nil *et_brace_vis_ents* nil *et_opost_brace_src_ents* nil *et_opost_screw_pile_bot_y* nil)
                    (if (tblsearch "DIMSTYLE" "TSSD_20_100") (command "-DIMSTYLE" "_R" "TSSD_20_100"))
                    (while (< pi_idx *et_global_n*)
                      (setq cur_pv_x (+ pv_start_x (* pi_idx (* (+ *et_global_h* 20.0) 5.0)))
@@ -1248,18 +1266,36 @@
                               axis_start_pt (list ax_L_rx ax_L_ry)
                               axis_end_pt (list ax_R_rx ax_R_ry))
 
+                        ;; PHC Nut locations on the beam-axis: brace Nuts are 400 mm from both ends;
+                        ;; post Nuts are at ±(pile diameter/2 + 70 mm), projected onto the beam-axis.
+                        (if (= *et_global_elev_type* 4)
+                          (progn
+                            (setq phc_nut_offset (* (+ (/ *et_global_phc_diameter* 2.0) 70.0) 5.0)
+                                  axis_angle (angle axis_start_pt axis_end_pt)
+                                  phc_post_left_x (- (/ (+ ax_L_rx ax_R_rx) 2.0) phc_nut_offset)
+                                  phc_post_right_x (+ (/ (+ ax_L_rx ax_R_rx) 2.0) phc_nut_offset)
+                                  phc_post_left_y (+ ax_L_ry (* (/ (- phc_post_left_x ax_L_rx) (- ax_R_rx ax_L_rx)) (- ax_R_ry ax_L_ry)))
+                                  phc_post_right_y (+ ax_L_ry (* (/ (- phc_post_right_x ax_L_rx) (- ax_R_rx ax_L_rx)) (- ax_R_ry ax_L_ry)))
+                                  key_points (list (list ax_L_rx ax_L_ry "L")
+                                                   (list (car (polar axis_start_pt axis_angle 2000.0)) (cadr (polar axis_start_pt axis_angle 2000.0)) "BraceNut1")
+                                                   (list phc_post_left_x phc_post_left_y "PostNut1")
+                                                   (list phc_post_right_x phc_post_right_y "PostNut2")
+                                                   (list (car (polar axis_end_pt (+ axis_angle pi) 2000.0)) (cadr (polar axis_end_pt (+ axis_angle pi) 2000.0)) "BraceNut2")
+                                                   (list ax_R_rx ax_R_ry "R")))
+                          )
+                        )
+
                         ;; 计算每个点在斜轴线上的投影距离，并排序
                         (setq sorted_points (vl-sort key_points
                                                     '(lambda (p1 p2)
                                                        (< (PVRectEnt_GetProjectionDist p1 axis_start_pt axis_end_pt)
                                                           (PVRectEnt_GetProjectionDist p2 axis_start_pt axis_end_pt)))))
 
-                        ;; 第一道详细标注：相邻点对标注，统一偏移 1200（C-post-single 跳过，无立柱/支撑参考点）
-                        (if (and (not (= *et_global_elev_type* 3))
-                                 (not (= *et_global_elev_type* 4)))
+                        ;; Beam-axis chain dimensions: PHC is split at all four beam-axis Nut locations and offset 800.
+                        (if (not (= *et_global_elev_type* 3))
                           (progn
                             (setvar "CLAYER" "DIM")
-                            (setq dim_offset 1200.0
+                            (setq dim_offset (if (= *et_global_elev_type* 4) 800.0 1200.0)
                                   i 0)
                             (while (< i (1- (length sorted_points)))
                               (setq p1 (nth i sorted_points)
@@ -1277,7 +1313,7 @@
                           )
                         )
 
-                        ;; 第二道总长标注：左端->右端，偏移 2000
+                        ;; Overall beam length annotation retained for every elevation, including PHC.
                         (setvar "CLAYER" "DIM")
                         (setq total_dim_offset 2000.0
                               total_mid_x (/ (+ ax_L_rx ax_R_rx) 2.0)
@@ -1365,6 +1401,7 @@
                             (entmake (list '(0 . "LINE") '(8 . "AXIS")
                                            (cons 10 (list pile_axis_x lower_top_axis_y 0.0))
                                            (cons 11 (list pile_axis_x pile_axis_top_y 0.0))))
+                            (setq *et_elev_phc_column_ents* (cons (entlast) *et_elev_phc_column_ents*))
                             (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                                            '(8 . "0") '(62 . 8) '(90 . 4) '(70 . 1)
                                            (list 10 (- pile_axis_x pile_rect_half_w) pile_axis_top_y)
@@ -1893,6 +1930,7 @@
       (if (not (tblsearch "LAYER" "02Beam"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "02Beam")      (70 . 0) (62 . 4))))
       (if (not (tblsearch "LAYER" "03Brace"))     (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "03Brace")     (70 . 0) (62 . 1))))
       (if (not (tblsearch "LAYER" "04Column"))    (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "04Column")    (70 . 0) (62 . 7))))
+      (if (not (tblsearch "LAYER" "05Hoop"))      (entmake '((0 . "LAYER") (100 . "AcDbSymbolTableRecord") (100 . "AcDbLayerTableRecord") (2 . "05Hoop")      (70 . 0) (62 . 2))))
 
       ;; == 1. PURLIN short lines → 01Purlin-01 / 01Purlin-02 (right half / left half),
       ;;       each half split by height into ...up / ...down ==
@@ -1951,6 +1989,9 @@
         (progn
           (setq ss_beam (ssadd))
           (ssadd *et_elev_beam_ent* ss_beam)
+          (foreach en *et_elev_phc_crossbeam_ents*
+            (if (and en (entget en)) (ssadd en ss_beam))
+          )
           (setq ent_before (entlast))
           (command "_.COPY" ss_beam "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
           (setq en_new (entnext ent_before))
@@ -1966,10 +2007,13 @@
       )
 
       ;; == 3. POST-AXIS → 04Column ==
-      (if *et_elev_post_ents*
+      (if (or *et_elev_post_ents* *et_elev_phc_column_ents*)
         (progn
           (setq ss_post (ssadd))
           (foreach en *et_elev_post_ents*
+            (if (and en (entget en)) (ssadd en ss_post))
+          )
+          (foreach en *et_elev_phc_column_ents*
             (if (and en (entget en)) (ssadd en ss_post))
           )
           (if (> (sslength ss_post) 0)
@@ -2071,6 +2115,29 @@
         (prompt "\n>>> No brace-axis lines tracked, skipping 03Brace copy.")
       )
 
+      ;; PHC hoop axes → 05Hoop in the reduced elevation thumbnail.
+      (if *et_elev_phc_hoop_ents*
+        (progn
+          (setq ss_brace (ssadd))
+          (foreach en *et_elev_phc_hoop_ents*
+            (if (and en (entget en)) (ssadd en ss_brace))
+          )
+          (if (> (sslength ss_brace) 0)
+            (progn
+              (setq ent_before (entlast))
+              (command "_.COPY" ss_brace "" "_NON" (list 0.0 0.0 0.0) (list axis_copy_dist 0.0 0.0))
+              (setq en_new (entnext ent_before))
+              (while en_new
+                (setq edata (entget en_new))
+                (entmod (subst (cons 8 "05Hoop") (assoc 8 edata) edata))
+                (ssadd en_new ss_scaled_all)
+                (setq en_new (entnext en_new))
+              )
+            )
+          )
+        )
+      )
+
       ;; == Scale all copied lines 1/5 about the saved scale center ==
       (if (> (sslength ss_scaled_all) 0)
         (progn
@@ -2080,7 +2147,9 @@
           (prompt "\n>>> Scale-down completed.")
           ;; Extend/clip post-axis copies to exact beam-angle-axis intersection + ground
           ;; (skipped for C-post-single: scale already places endpoints exactly)
-          (if (and post_copy_list lower_top_axis_y U1_rot_y U2_rot_y (not (= *et_global_elev_type* 3)))
+          (if (and post_copy_list lower_top_axis_y U1_rot_y U2_rot_y
+                   (not (= *et_global_elev_type* 3))
+                   (not (= *et_global_elev_type* 4)))
             (progn
               ;; For O-post the post has shifted X; find beam Y at new post X via slope
               (setq beam_dy_per_dx (if (not (= U2_rot_x U1_rot_x))
