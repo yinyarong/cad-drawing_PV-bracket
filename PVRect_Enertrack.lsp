@@ -503,8 +503,8 @@
         nut_inner (* (+ (/ diameter 2.0) 70.0) 5.0)
         nut_outer (* (+ (/ diameter 2.0) 70.0 100.0) 5.0)
         post_start_y (- hoop2_y 175.0)
-        post_half_width (* post_width 2.5)
-        brace_hw (* brace_width 2.5)
+        post_half_width (* (- post_width 20.0) 2.5)
+        brace_hw (* (- brace_width 20.0) 2.5)
         brace_nut_pts nil)
   ;; Crossbeam axis is 30 mm above the pile top; its 60 mm section is centered on the axis.
   (entmake (list '(0 . "LINE") '(8 . "AXIS")
@@ -550,7 +550,7 @@
                    (cons 10 (list post_x post_start_y 0.0))
                    (cons 11 (list post_x post_end_y 0.0))))
     (setq *et_elev_phc_column_ents* (cons (entlast) *et_elev_phc_column_ents*))
-    ;; Post section rectangle is centered on its axis and uses the editable Post Width.
+    ;; Keep the post rectangle centered and full-length; reduce its input width by 20 mm.
     (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                    '(8 . "0") '(62 . 2) '(90 . 4) '(70 . 1)
                    (list 10 (- post_x post_half_width) post_end_y)
@@ -601,6 +601,7 @@
                        (cons 10 (list (car brace_ext_start) (cadr brace_ext_start) 0.0))
                        (cons 11 (list (car brace_ext_end) (cadr brace_ext_end) 0.0))))
         (setq *et_elev_brace_ents* (cons (entlast) *et_elev_brace_ents*))
+        ;; Keep the brace rectangle centered and full-length; reduce its input width by 20 mm.
         (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                        '(8 . "beam") '(90 . 4) '(70 . 1)
                        (list 10 (+ brace_mid_x (* brace_nx brace_hl) (* brace_perp_x brace_hw))
@@ -3574,10 +3575,11 @@
   (princ)
 )
 
-;; Trim overshooting PHC thumbnail axes at their nearest intersections.
-;; The pile axis (06Pile) is deliberately excluded so its lower endpoint remains on ground.
+;; Trim PHC thumbnail members at intersections; keep the beam full length.
+;; Post tops meet the beam axis; pile tops are clipped to hoop1 while bottoms stay at ground.
 (defun PVRectEnt_ClipPHCThumbnail (ss / i en ed lay p10 p11 records rec other ip
-                                        c10 c11 best10 best11 len d10 d11 q10 q11 new10 new11)
+                                        c10 c11 best10 best11 len d10 d11 q10 q11 new10 new11
+                                        hoop1_ent hoop1_data hoop1_y pile_ent pile_data pile_p10 pile_p11 pile_ip)
   (setq records nil i 0)
   (while (< i (sslength ss))
     (setq en (ssname ss i)
@@ -3585,7 +3587,7 @@
           lay (cdr (assoc 8 ed)))
     (if (and (= (cdr (assoc 0 ed)) "LINE")
              (member lay '("02Beam" "03Brace" "04Column" "05Loop")))
-      (setq records (cons (list en (cdr (assoc 10 ed)) (cdr (assoc 11 ed))) records))
+      (setq records (cons (list en (cdr (assoc 10 ed)) (cdr (assoc 11 ed)) lay) records))
     )
     (setq i (1+ i))
   )
@@ -3622,13 +3624,61 @@
               new11 (if (> d11 0.000001) q11 (caddr rec)))
       )
     )
-    (if (or (not (equal new10 (cadr rec) 0.000001))
-            (not (equal new11 (caddr rec) 0.000001)))
+    (if (and (/= (cadddr rec) "02Beam")
+             (or (not (equal new10 (cadr rec) 0.000001))
+                 (not (equal new11 (caddr rec) 0.000001))))
       (progn
         (setq ed (entget (car rec)))
         (entmod (subst (cons 10 new10) (assoc 10 ed) ed))
         (setq ed (entget (car rec)))
         (entmod (subst (cons 11 new11) (assoc 11 ed) ed))
+      )
+    )
+  )
+  ;; Locate the upper (hoop1) axis, then shorten only each pile's upper endpoint to it.
+  (setq hoop1_ent nil hoop1_y nil i 0)
+  (while (< i (sslength ss))
+    (setq en (ssname ss i)
+          ed (entget en))
+    (if (and (= (cdr (assoc 0 ed)) "LINE") (= (cdr (assoc 8 ed)) "05Loop"))
+      (progn
+        (setq p10 (cdr (assoc 10 ed))
+              p11 (cdr (assoc 11 ed)))
+        (if (or (null hoop1_y) (> (max (cadr p10) (cadr p11)) hoop1_y))
+          (setq hoop1_ent en
+                hoop1_y (max (cadr p10) (cadr p11)))
+        )
+      )
+    )
+    (setq i (1+ i))
+  )
+  (if hoop1_ent
+    (progn
+      (setq hoop1_data (entget hoop1_ent)
+            i 0)
+      (while (< i (sslength ss))
+        (setq pile_ent (ssname ss i)
+              pile_data (entget pile_ent))
+        (if (and (= (cdr (assoc 0 pile_data)) "LINE") (= (cdr (assoc 8 pile_data)) "06Pile"))
+          (progn
+            (setq pile_p10 (cdr (assoc 10 pile_data))
+                  pile_p11 (cdr (assoc 11 pile_data))
+                  pile_ip (inters pile_p10 pile_p11
+                                  (cdr (assoc 10 hoop1_data))
+                                  (cdr (assoc 11 hoop1_data)) T))
+            (if (and pile_ip
+                     (> (cadr pile_ip) (min (cadr pile_p10) (cadr pile_p11)))
+                     (< (cadr pile_ip) (max (cadr pile_p10) (cadr pile_p11))))
+              (progn
+                (setq pile_data (entget pile_ent))
+                (if (> (cadr pile_p10) (cadr pile_p11))
+                  (entmod (subst (cons 10 pile_ip) (assoc 10 pile_data) pile_data))
+                  (entmod (subst (cons 11 pile_ip) (assoc 11 pile_data) pile_data)))
+              )
+            )
+          )
+        )
+        (setq i (1+ i))
       )
     )
   )
