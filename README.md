@@ -6,14 +6,14 @@
 
 ## Overview
 
-A set of three AutoLISP scripts that automate structural engineering drawing tasks for photovoltaic (PV) bracket systems in AutoCAD. `PVRect_Singsun.lsp` generates plan / elevation drawings and the 3D analysis model from a dialog-driven parameter set, `YYR.lsp` provides lightweight utilities for cross-section and dimension annotation, and `Mymodel.lsp` automates 3D model assembly and DXF export by reading parameters from an Excel spreadsheet.
+A collection of AutoLISP scripts that automate structural engineering drawing tasks for photovoltaic (PV) bracket systems in AutoCAD. `PVRect_Singsun.lsp` and `PVRect_Enertrack.lsp` are parallel, independently loadable product variants for plan / elevation drawing and dialog-driven 3D analysis-model generation. `YYR.lsp` provides cross-section and dimension utilities, while `Mymodel.lsp` is the standalone Excel-driven 3D model and DXF-export workflow.
 
 ## Features
 
 - **Dialog-driven PV array generation** — enter panel dimensions, row/column counts, bracket spacing, clearance, and tilt angle; full engineering drawing is generated automatically
 - **Plan / Elevation / MyModel output** — radio buttons at the top of the dialog pick one output; OK generates the plan view, the elevation view of the selected Type, or the 3D model
-- **Excel parameter import** — reads defaults from the most recently modified `.xls*` file in the working directory (`~$` lock files skipped); auto-detects Eurocode (V1.2/EN1990) and ASCE load templates
-- **Multiple elevation types** — C-post, O-post, and C-post-single cross-section views with correctly scaled geometry
+- **Excel parameter import** — reads defaults from the newest `.xls*` file in the saved drawing's directory (`~$` lock files skipped); each variant uses its own workbook mapping and template detection
+- **Multiple elevation types** — C-post-double, O-post, C-post-single, PHC Pile, and C-3P4B elevation views with configurable member sections
 - **Structural cross-section tools** — brace and C-post rectangle pairs generated perpendicular to any selected LINE
 - **Aligned dimension annotation** — `DIMALIGNED` labels placed below selected lines with TSSD-compatible styles and automatic scale-based offsets
 - **3D model assembly** — rotates geometry, builds full-length purlins, copies frames along Y (edge spans `zd-e` and middle spans `zd` may differ, optional east-west slope), then exports to DXF R2010
@@ -23,12 +23,14 @@ A set of three AutoLISP scripts that automate structural engineering drawing tas
 
 ## How It Works
 
-### PVRect_Singsun.lsp
+### PVRect_Singsun.lsp and PVRect_Enertrack.lsp
 
-1. **Excel import** — `PVRectSgs_ReadExcelDefaults` opens the newest Excel/WPS file in the current directory via COM automation and populates dialog defaults (a user's already-open Excel window is left untouched)
-2. **Dialog** — `c:PVRect_Singsun` presents a DCL dialog for parameter entry and validation
-3. **Drawing generation** — the script builds all geometry (PV panels, purlins, beams, axes, dimensions, elevation views, nut blocks) using `entmake` calls at a 1:5 scale (CAD units = mm × 2)
-4. **Post-processing** — `PVRectSgs_PostFix` (called via `c:ZHWBZH_Singsun` / `vla-SendCommand`) generates sub-detail views, segmented horizontal dimensions, and side elevation labels
+These are parallel product variants. Their command names, helper functions, and global state use separate prefixes, so both can be loaded in the same AutoCAD session. Each offers the same plan / elevation / dialog-driven MyModel workflow; Excel defaults and template mappings are variant-specific.
+
+1. **Excel import** — each variant opens the newest Excel/WPS file in the saved drawing directory via COM automation and populates dialog defaults (an already-open Excel window is left untouched)
+2. **Dialog** — `c:PVRect_Singsun` or `c:PVRect_Enertrack` presents a DCL dialog for parameter entry and validation
+3. **Drawing generation** — each variant builds geometry (PV panels, purlins, beams, axes, dimensions, elevation views, nut blocks) using `entmake` at its drawing scale
+4. **Post-processing** — variant-specific `ZHWBZH_*` / PostFix routines generate sub-detail views, segmented horizontal dimensions, and side elevation labels
 
 ### YYR.lsp
 
@@ -38,14 +40,14 @@ The main `YYR` command opens a dialog to select a sub-function. Each sub-functio
 
 `MyModel` runs a fixed six-step pipeline without user interaction after launch: 3D rotation → Excel read → purlin adjustment → row copy → layer cleanup → DXF export. The whole run is wrapped in one undo mark.
 
-The same pipeline is also built into `PVRect_Singsun.lsp` (`PVRectSgs_MyModel`): select **MyModel** in the dialog and the parameters come from the dialog instead of Excel.
+The same pipeline is also built into both PVRect variants: select **MyModel** in either dialog and parameters come from the dialog instead of Excel. Both variants use the command and helper-function prefixes described above.
 
 ## Prerequisites
 
 - **AutoCAD** with AutoLISP and DCL support (2018 or later recommended)
-- **Visual LISP / VLA** — `(vl-load-com)` is called at load time; included in all full AutoCAD releases
-- **Microsoft Excel or WPS Office** (COM automation) — required for Excel import in `PVRect_Singsun.lsp` and `Mymodel.lsp`
-- **TSSD structural CAD plugin** — required for `TSSD_xx_100` dimension styles in `YYR.lsp` and `PVRect_Singsun.lsp`; scripts fall back to the current dimension style if TSSD is not loaded
+- **Visual LISP / VLA** — `(vl-load-com)` is called at runtime; included in full AutoCAD releases
+- **Microsoft Excel or WPS Office** (COM automation) — required for Excel import in the PVRect variants and standalone `Mymodel.lsp`
+- **TSSD structural CAD plugin** — required for `TSSD_xx_100` dimension styles in `YYR.lsp` and the PVRect variants; scripts fall back to the current dimension style if TSSD is not loaded
 
 ## Installation
 
@@ -67,18 +69,21 @@ Browse to the file, click **Load**.
 
 ```lisp
 (load "PVRect_Singsun.lsp")
+(load "PVRect_Enertrack.lsp")
 (load "YYR.lsp")
 (load "Mymodel.lsp")
 ```
 
 ## Configuration
 
-### PVRect_Singsun parameters (dialog fields)
+### PVRect dialog parameters
+
+The `PVRect_Singsun` and `PVRect_Enertrack` dialogs expose the same elevation parameters. The commands and post-processing remain variant-specific.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | Output | Plan view / Elevation view / MyModel (only one) | Plan view |
-| Type | Elevation type: C-post-double / O-post / C-post-single (elevation only) | C-post-double |
+| Type | Elevation type: C-post-double / O-post / C-post-single / PHC Pile / C-3P4B (C-3P4B requires 3 rows) | C-post-double |
 | `h` / `w` | PV panel height / width (mm) | 2382 / 1134 |
 | `n` / `m` | Row count / column count | 2 / 12 |
 | `hole` | Hole spacing (mm) | 1400 |
@@ -88,15 +93,18 @@ Browse to the file, click **Load**.
 | `clearance` | Ground clearance below PV panel (mm) | 400 |
 | `angle` | Panel tilt angle (°) | 20 |
 | `post_w` / `post_d` | C-post width / O-post diameter (mm, elevation only) | 80 / 60 |
+| `brace_w` | PHC brace width; section is reduced by 20 mm for the displayed outline (mm) | 50 |
+| PHC Diameter | PHC pile diameter (mm; PHC Pile only) | 300 |
+| Above-ground Height | PHC pile exposure above grade (mm; PHC Pile only; initially clearance − 100) | 300 |
 | `purlin_H` | Purlin bracket height in elevation (mm) | 80 |
 | `beam_H` | Beam section height in elevation (mm) | 100 |
 | E-W Slope | East-west slope for MyModel (°); purlins tilt along their length, along-slope spacing stays `zd` / `zd-e` | 0 |
 
 ### Excel files
 
-Both scripts look for Excel files in the folder of the current (saved) drawing. When several exist, the most recently modified one is used and `~$` lock files are ignored.
+Both PVRect variants look for Excel files in the folder of the current (saved) drawing. When several exist, the most recently modified one is used and `~$` lock files are ignored. Each variant reads its own expected workbook layout and sheet fields; use a compatible workbook for the selected variant.
 
-**PVRect_Singsun — dialog defaults (Import Excel)** are read from the `数据填写` sheet. Eurocode mode is detected from "V1.2" in the file name or "EN1990" in the sheet header; otherwise ASCE mode is assumed.
+The PVRect dialogs import defaults from the `数据填写` sheet. Eurocode mode is detected from "V1.2" in the file name or "EN1990" in the sheet header; otherwise ASCE mode is assumed.
 
 **Mymodel.lsp (standalone)** reads the `阵列计算` sheet:
 
@@ -107,9 +115,9 @@ Both scripts look for Excel files in the folder of the current (saved) drawing. 
 | C15 | `rowCount` | Number of frame copies (rounded to an integer) |
 | C16 | `dist1` | Distance from the original frame to the purlin's +Y end (0 ~ C13) |
 
-MyModel inside `PVRect_Singsun` does not read Excel; see [MyModel from the dialog](#mymodel-from-the-pvrect_singsun-dialog).
+MyModel inside either PVRect variant does not read Excel; see [MyModel from either PVRect dialog](#mymodel-from-either-pvrect-dialog).
 
-### Layer system (PVRect_Singsun)
+### Layer system (PVRect variants)
 
 | Layer | Color | Usage |
 |-------|-------|-------|
@@ -125,7 +133,9 @@ MyModel inside `PVRect_Singsun` does not read Excel; see [MyModel from the dialo
 | `01Purlin-02up` / `01Purlin-02down` | Green | Same for the left half |
 | `02Beam` | Cyan | Elevation reduced copy: beam axis |
 | `03Brace` | Red | Elevation reduced copy: brace axes |
-| `04Column` | White | Elevation reduced copy: post axes |
+| `04Column` | White | Elevation reduced copy: post axes (including PHC column axes) |
+| `05Loop` | Yellow | PHC reduced copy: hoop axes |
+| `06Pile` | Magenta | PHC reduced copy: pile center axis |
 
 ## Usage
 
@@ -135,17 +145,17 @@ MyModel inside `PVRect_Singsun` does not read Excel; see [MyModel from the dialo
 Command: PVRect_Singsun
 ```
 
-The dialog opens. Choose **Plan view**, **Elevation view** or **MyModel** at the top, fill in panel dimensions, layout counts, and structural parameters, then click **OK**. Plan / elevation output calls `ZHWBZH_Singsun` automatically for post-processing; MyModel builds the 3D model in the current drawing and saves a `.dxf`.
+To use the Enertrack variant, load `PVRect_Enertrack.lsp` and run `PVRect_Enertrack` instead. The dialog opens. Choose **Plan view**, **Elevation view** or **MyModel** at the top, fill in panel dimensions, layout counts, and structural parameters, then click **OK**. Plan / elevation output runs the matching variant's post-processing; MyModel builds the 3D model in the current drawing and saves a `.dxf`.
 
 | Output | Result |
 |--------|--------|
 | Plan view | Array layout (panels, purlins, axes, dimensions). Type / Clearance / Beam H / Purlin H / post size are disabled |
-| Elevation view | Side elevation of the selected Type (C-post-double / O-post / C-post-single), plus a reduced copy of the member axes at real (mm) size on layers `01Purlin-01up/down`, `01Purlin-02up/down`, `02Beam`, `03Brace`, `04Column` |
+| Elevation view | Side elevation of the selected Type, plus a reduced copy of member axes at real (mm) size on layers `01Purlin-01up/down`, `01Purlin-02up/down`, `02Beam`, `03Brace`, `04Column`; PHC also uses `05Loop` and `06Pile` |
 | MyModel | 3D analysis model + DXF export, see below |
 
-Command, function and global names use `_Singsun` / `PVRectSgs_` / `*sg_`, so this file can be loaded alongside other PVRect variants. The old `PVRect` command name no longer exists.
+The variants use distinct command, function, and global-name prefixes (`_Singsun` / `PVRectSgs_` / `*sg_*` and `_Enertrack` / `PVRectEnt_` / `*et_*`), so both files can be loaded in the same AutoCAD session. The old `PVRect` command name no longer exists.
 
-#### MyModel from the PVRect_Singsun dialog
+#### MyModel from either PVRect dialog
 
 Only `w`, `m`, `zn`, `zd`, `zd-e` and **E-W Slope** are used; everything else is disabled. The current drawing must be saved and contain the member axis lines (e.g. the reduced copy from Elevation view). Layers are classified by name:
 
