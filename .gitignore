@@ -7,3 +7,6 @@
 *.sv$
 *.ac$
 ~$*
+
+# Keep Enertrack's local implementation out of remote main
+/PVRect_Enertrack.lsp
